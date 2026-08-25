@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='6' width='24' height='22' rx='5' fill='%231646D8'/%3E%3Cpath d='M10 3v6M22 3v6M4 12h24' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='m10 20 4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script>
     try {
-      const savedAppearance = JSON.parse(localStorage.getItem('daymark-v5-settings') || '{}');
+      const savedAppearance = JSON.parse(localStorage.getItem('dday-count-settings') || '{}');
       document.documentElement.dataset.fontFamily = ['system','pretendard','malgun','arial','georgia','gulim','batang'].includes(savedAppearance.fontFamily) ? savedAppearance.fontFamily : 'system';
       document.documentElement.dataset.fontSize = ['small','medium','large'].includes(savedAppearance.fontSize) ? savedAppearance.fontSize : 'medium';
     } catch (_) {
@@ -204,6 +204,7 @@
           <button type="button" class="btn-category-manage" id="addCategoryBtn">+ 카테고리 추가</button>
           <button type="button" class="btn-category-manage btn-category-list" id="manageCategoryBtn">⚙ 카테고리 관리</button>
           <button type="button" class="btn-settings" id="settingsBtn" aria-haspopup="dialog">⚙ 화면 설정</button>
+          <button type="button" class="btn-settings" id="hiddenItemsBtn" aria-haspopup="dialog">🔒 숨김 일정</button>
         </nav>
 
         <!-- Sidebar Footer Action -->
@@ -319,7 +320,7 @@
         <section class="list-section" aria-label="D-Day 목록">
           <div class="list-header">
             <div class="list-title-group">
-              <h2 class="list-title" id="listHeaderTitle">My D-Days</h2>
+              <h2 class="list-title" id="listHeaderTitle">My DayMark</h2>
               <span class="list-count-badge" id="listCountBadge" aria-label="현재 필터된 일정 수">0</span>
             </div>
             <button type="button" class="btn btn-primary btn-add-desktop" id="openAddModalBtn">
@@ -327,7 +328,7 @@
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>+ 새 일정 추가</span>
+              <span>새 일정 추가</span>
             </button>
           </div>
 
@@ -356,7 +357,7 @@
                   <polyline points="15 18 9 12 15 6"></polyline>
                 </svg>
               </button>
-              <h2 class="cal-month-title" id="calMonthTitle">2026년 8월</h2>
+              <button type="button" class="cal-month-title cal-month-select" id="calMonthTitle" aria-label="연도와 월 직접 선택">2026년 8월 ▼</button>
               <button type="button" class="btn-cal-arrow" id="calNextMonthBtn" aria-label="다음 달 이동">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="9 18 15 12 9 6"></polyline>
@@ -441,7 +442,6 @@
           >
           <p class="form-error-msg" id="titleError" role="alert"></p>
         </div>
-
         <!-- Category Selector -->
         <div class="form-group">
           <label class="form-label">카테고리 <span class="required" aria-hidden="true">*</span></label>
@@ -507,11 +507,15 @@
           </div>
         </div>
 
-        <!-- Important Checkbox -->
-        <div class="form-group">
+        <!-- Schedule Options -->
+        <div class="form-group schedule-options-group">
           <label class="checkbox-label" for="importantCheckbox">
             <input type="checkbox" id="importantCheckbox" name="important" class="form-checkbox">
             <span class="checkbox-text">⭐ 중요 일정으로 설정</span>
+          </label>
+          <label class="checkbox-label" for="hiddenCheckbox">
+            <input type="checkbox" id="hiddenCheckbox" name="hidden" class="form-checkbox">
+            <span class="checkbox-text">🔒 일정 숨기기</span>
           </label>
         </div>
 
@@ -544,6 +548,18 @@
 
   <div class="modal-overlay" id="categoryMoveModal" role="dialog" aria-modal="true" aria-labelledby="categoryMoveTitle" hidden>
     <div class="modal-card modal-card-sm"><div class="modal-header"><h3 class="modal-title" id="categoryMoveTitle">일정 이동 후 삭제</h3></div><div class="modal-body"><p id="categoryMoveMessage"></p><label class="form-label" for="categoryMoveSelect">이동할 카테고리</label><select class="form-input" id="categoryMoveSelect"></select></div><div class="modal-actions"><button class="btn btn-secondary" id="cancelCategoryMoveBtn">취소</button><button class="btn btn-danger" id="confirmCategoryMoveBtn">이동 후 삭제</button></div></div>
+  </div>
+
+  <div class="modal-overlay" id="pinModal" role="dialog" aria-modal="true" aria-labelledby="pinModalTitle" hidden>
+    <div class="modal-card modal-card-sm pin-modal-card"><div class="modal-header"><div><h3 class="modal-title" id="pinModalTitle">숨김 일정</h3><p class="modal-subtitle" id="pinModalSubtitle">보호된 일정입니다. 4자리 PIN을 입력하세요.</p></div><button type="button" class="btn-close" id="closePinModalBtn" aria-label="PIN 창 닫기">×</button></div><form class="modal-body pin-form" id="pinForm"><label class="form-label" for="pinInput">PIN</label><input class="form-input pin-input" id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="○ ○ ○ ○" required><div id="pinConfirmGroup" hidden><label class="form-label" for="pinConfirmInput">PIN 확인</label><input class="form-input pin-input" id="pinConfirmInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="○ ○ ○ ○"></div><small id="pinLostNotice" hidden>PIN을 잊으면 숨김 일정에 접근할 수 없습니다.</small><p class="form-error-msg" id="pinError" role="alert"></p><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPinBtn">취소</button><button type="submit" class="btn btn-primary" id="confirmPinBtn">확인</button></div></form></div>
+  </div>
+
+  <div class="modal-overlay" id="hiddenItemsModal" role="dialog" aria-modal="true" aria-labelledby="hiddenItemsTitle" hidden><div class="modal-card hidden-items-card"><div class="modal-header"><div><h3 class="modal-title" id="hiddenItemsTitle">숨김 일정</h3><p class="modal-subtitle">이 탭을 닫으면 다시 잠깁니다.</p></div><button type="button" class="btn-close" id="closeHiddenItemsBtn" aria-label="닫기">×</button></div><div class="hidden-items-toolbar"><button type="button" class="btn btn-secondary" id="changeHiddenPinBtn">PIN 변경</button></div><div class="hidden-items-list" id="hiddenItemsList"></div></div></div>
+
+  <div class="modal-overlay" id="changePinModal" role="dialog" aria-modal="true" aria-labelledby="changePinTitle" hidden><div class="modal-card modal-card-sm"><div class="modal-header"><h3 class="modal-title" id="changePinTitle">PIN 변경</h3><button type="button" class="btn-close" id="closeChangePinBtn" aria-label="닫기">×</button></div><form class="modal-body pin-form" id="changePinForm"><label class="form-label" for="oldPinInput">기존 PIN</label><input class="form-input pin-input" id="oldPinInput" type="password" inputmode="numeric" maxlength="4" required><label class="form-label" for="newPinInput">새 PIN</label><input class="form-input pin-input" id="newPinInput" type="password" inputmode="numeric" maxlength="4" required><label class="form-label" for="newPinConfirmInput">새 PIN 확인</label><input class="form-input pin-input" id="newPinConfirmInput" type="password" inputmode="numeric" maxlength="4" required><p class="form-error-msg" id="changePinError"></p><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelChangePinBtn">취소</button><button type="submit" class="btn btn-primary">변경</button></div></form></div></div>
+
+  <div class="modal-overlay" id="calendarJumpModal" role="dialog" aria-modal="true" aria-labelledby="calendarJumpTitle" hidden>
+    <div class="modal-card modal-card-sm"><div class="modal-header"><h3 class="modal-title" id="calendarJumpTitle">연도·월로 이동</h3><button type="button" class="btn-close" id="closeCalendarJumpBtn" aria-label="닫기">×</button></div><form class="modal-body" id="calendarJumpForm"><div class="form-row-dates"><div class="form-group"><label class="form-label" for="calendarJumpYear">연도</label><select class="form-input" id="calendarJumpYear"></select></div><div class="form-group"><label class="form-label" for="calendarJumpMonth">월</label><select class="form-input" id="calendarJumpMonth"></select></div></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelCalendarJumpBtn">취소</button><button type="submit" class="btn btn-primary">이동</button></div></form></div>
   </div>
 
   <!-- Event Detail Modal (When clicking event in Calendar) -->

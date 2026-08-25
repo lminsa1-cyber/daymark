@@ -1,5 +1,5 @@
 /**
- * DayMark Web Application (v5.0)
+ * D-Day & Schedule Web Application (v2.0 Stitch UI)
  * Vanilla JavaScript implementation with start/end date periods, month calendar view,
  * multi-day event bars, category filters, and detail modal.
  */
@@ -10,9 +10,11 @@
   // ==========================================
   // Constants & Category Definitions
   // ==========================================
-  const STORAGE_KEY = 'daymark-v5-items';
-  const CATEGORY_STORAGE_KEY = 'daymark-v5-categories';
-  const SETTINGS_STORAGE_KEY = 'daymark-v5-settings';
+  const STORAGE_KEY = 'dday-count-items';
+  const CATEGORY_STORAGE_KEY = 'dday-count-categories';
+  const SETTINGS_STORAGE_KEY = 'dday-count-settings';
+  const PRIVACY_PIN_STORAGE_KEY = 'daymark-hidden-pin-hash';
+  const PRIVACY_SESSION_KEY = 'daymark-hidden-unlocked';
   const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium' };
   const FONT_FAMILIES = {
     system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Arial, sans-serif',
@@ -57,7 +59,8 @@
     currentDeleteId: null,
     currentDetailId: null,
     currentCategoryEditId: null,
-    currentCategoryDeleteId: null
+    currentCategoryDeleteId: null,
+    pendingPrivacyAction: null
   };
 
   // ==========================================
@@ -122,6 +125,7 @@
   const startDateInput = document.getElementById('startDateInput');
   const endDateInput = document.getElementById('endDateInput');
   const importantCheckbox = document.getElementById('importantCheckbox');
+  const hiddenCheckbox = document.getElementById('hiddenCheckbox');
   const titleError = document.getElementById('titleError');
   const startDateError = document.getElementById('startDateError');
   const endDateError = document.getElementById('endDateError');
@@ -180,6 +184,36 @@
   const categoryManagementList = document.getElementById('categoryManagementList');
   const closeCategoryManagementBtn = document.getElementById('closeCategoryManagementBtn');
   const managementAddCategoryBtn = document.getElementById('managementAddCategoryBtn');
+  const hiddenItemsBtn = document.getElementById('hiddenItemsBtn');
+  const pinModal = document.getElementById('pinModal');
+  const pinForm = document.getElementById('pinForm');
+  const pinInput = document.getElementById('pinInput');
+  const pinError = document.getElementById('pinError');
+  const pinModalTitle = document.getElementById('pinModalTitle');
+  const pinModalSubtitle = document.getElementById('pinModalSubtitle');
+  const closePinModalBtn = document.getElementById('closePinModalBtn');
+  const cancelPinBtn = document.getElementById('cancelPinBtn');
+  const pinConfirmInput = document.getElementById('pinConfirmInput');
+  const pinConfirmGroup = document.getElementById('pinConfirmGroup');
+  const pinLostNotice = document.getElementById('pinLostNotice');
+  const hiddenItemsModal = document.getElementById('hiddenItemsModal');
+  const hiddenItemsList = document.getElementById('hiddenItemsList');
+  const closeHiddenItemsBtn = document.getElementById('closeHiddenItemsBtn');
+  const changeHiddenPinBtn = document.getElementById('changeHiddenPinBtn');
+  const changePinModal = document.getElementById('changePinModal');
+  const changePinForm = document.getElementById('changePinForm');
+  const oldPinInput = document.getElementById('oldPinInput');
+  const newPinInput = document.getElementById('newPinInput');
+  const newPinConfirmInput = document.getElementById('newPinConfirmInput');
+  const changePinError = document.getElementById('changePinError');
+  const closeChangePinBtn = document.getElementById('closeChangePinBtn');
+  const cancelChangePinBtn = document.getElementById('cancelChangePinBtn');
+  const calendarJumpModal = document.getElementById('calendarJumpModal');
+  const calendarJumpForm = document.getElementById('calendarJumpForm');
+  const calendarJumpYear = document.getElementById('calendarJumpYear');
+  const calendarJumpMonth = document.getElementById('calendarJumpMonth');
+  const closeCalendarJumpBtn = document.getElementById('closeCalendarJumpBtn');
+  const cancelCalendarJumpBtn = document.getElementById('cancelCalendarJumpBtn');
 
   // Typography Settings Elements
   const settingsBtn = document.getElementById('settingsBtn');
@@ -356,7 +390,11 @@
   function loadCategories() {
     try {
       const parsed = JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY));
-      if (Array.isArray(parsed) && parsed.length) return parsed.filter(cat => cat && cat.id && cat.name).map(cat => ({ ...cat, color: cat.color || '#64748B', icon: ICON_NAMES.includes(cat.icon) ? cat.icon : 'pin', isDefault: Boolean(cat.isDefault) }));
+      if (Array.isArray(parsed) && parsed.length) {
+        const migrated = parsed.filter(cat => cat && cat.id && cat.name).map(cat => ({ id:cat.id, name:cat.name, color:cat.color || '#64748B', icon:ICON_NAMES.includes(cat.icon) ? cat.icon : 'pin', isDefault:Boolean(cat.isDefault) }));
+        localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
     } catch (e) { console.error('Failed to parse category data:', e); }
     localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
     return DEFAULT_CATEGORIES.map(cat => ({ ...cat }));
@@ -368,6 +406,42 @@
   }
 
   function getCategoryById(id) { return CATEGORIES[id] || CATEGORIES.other || CATEGORIES[state.categories[0]?.id]; }
+
+  function isHiddenUnlocked() { return sessionStorage.getItem(PRIVACY_SESSION_KEY) === 'true'; }
+
+  async function hashPin(pin) {
+    const data = new TextEncoder().encode(`DayMark:v1.1:${pin}`);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function closePinModal() { pinModal.hidden=true; pinInput.value=''; pinConfirmInput.value=''; pinError.textContent=''; state.pendingPrivacyAction=null; document.body.style.overflow=formModal.hidden?'':'hidden'; }
+  function requestPin(action, createMode = false) {
+    state.pendingPrivacyAction = { action, createMode };
+    pinModalTitle.textContent = createMode ? 'PIN 설정' : '숨김 일정';
+    pinModalSubtitle.textContent = createMode ? '숨김 일정을 보호할 4자리 PIN을 설정하세요.' : '보호된 일정입니다. 4자리 PIN을 입력하세요.';
+    pinConfirmGroup.hidden=!createMode; pinLostNotice.hidden=!createMode; pinInput.value=''; pinConfirmInput.value=''; pinError.textContent=''; pinModal.hidden=false; document.body.style.overflow='hidden';
+    setTimeout(() => pinInput.focus(), 50);
+  }
+
+  async function handlePinSubmit(event) {
+    event.preventDefault();
+    const pin = pinInput.value.trim();
+    if (!/^\d{4}$/.test(pin)) { pinError.textContent = '숫자 4자리를 입력해 주세요.'; return; }
+    const pending = state.pendingPrivacyAction;
+    if (!pending) return;
+    if (pending.createMode && pinConfirmInput.value.trim() !== pin) { pinError.textContent='PIN이 일치하지 않습니다.'; return; }
+    const pinHash = await hashPin(pin);
+    const savedHash = localStorage.getItem(PRIVACY_PIN_STORAGE_KEY);
+    if (pending.createMode) localStorage.setItem(PRIVACY_PIN_STORAGE_KEY, pinHash);
+    else if (!savedHash || savedHash !== pinHash) { pinError.textContent = 'PIN이 올바르지 않습니다.'; return; }
+    sessionStorage.setItem(PRIVACY_SESSION_KEY, 'true');
+    const action = pending.action;
+    pinModal.hidden = true; pinInput.value = ''; pinError.textContent = ''; state.pendingPrivacyAction = null; document.body.style.overflow = '';
+    if (typeof action === 'function') action();
+  }
+
+  function requestHiddenAccess(action) { if (isHiddenUnlocked()) action(); else requestPin(action, !localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)); }
 
   function getUrgencyState(startDate, endDate) {
     const status = getScheduleStatus(startDate, endDate);
@@ -406,6 +480,7 @@
               endDate: String(end),
               category: (item.category && CATEGORIES[item.category]) ? item.category : 'other',
               important: Boolean(item.important),
+              hidden: Boolean(item.hidden),
               checklist: Array.isArray(item.checklist) ? item.checklist.filter(check => check && check.id && typeof check.text === 'string' && check.text.trim()).map(check => ({ id:String(check.id), text:String(check.text).trim().slice(0,100), completed:Boolean(check.completed) })) : [],
               createdAt: item.createdAt || new Date().toISOString()
             };
@@ -513,8 +588,9 @@
    * Updates sidebar category counters.
    */
   function updateCategoryCounts() {
-    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체 일정</span></span><span class="nav-count-badge">${state.items.length}</span></button></li>` + state.categories.map(cat => {
-      const count = state.items.filter(item => item.category === cat.id).length;
+    const visibleItems=state.items.filter(item=>!item.hidden);
+    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체 일정</span></span><span class="nav-count-badge">${visibleItems.length}</span></button></li>` + state.categories.map(cat => {
+      const count = visibleItems.filter(item => item.category === cat.id).length;
       return `<li class="nav-item category-nav-item"><button type="button" class="nav-link" data-category="${cat.id}"><span class="nav-icon-text"><span class="nav-icon" style="color:${cat.color}">${getIconSvg(cat.icon)}</span><span>${escapeHtml(cat.name)}</span></span><span class="nav-count-badge">${count}</span></button><button class="category-edit-btn" data-edit-category="${cat.id}" aria-label="${escapeHtml(cat.name)} 카테고리 수정">⋮</button></li>`;
     }).join('');
     mobileCategoryChips.innerHTML = `<button type="button" class="category-chip" data-category="all">전체</button>` + state.categories.map(cat => `<button type="button" class="category-chip" data-category="${cat.id}" style="--category-color:${cat.color}">${getIconSvg(cat.icon,14)} ${escapeHtml(cat.name)}</button>`).join('');
@@ -570,7 +646,7 @@
    * @returns {Array}
    */
   function getFilteredAndSortedItems() {
-    let result = state.items;
+    let result = state.items.filter(item => !item.hidden);
 
     // 1. Filter by category
     if (state.activeCategory !== 'all') {
@@ -764,7 +840,7 @@
     calCategoryIndicator.textContent = catLabel;
 
     // Update List Section Title
-    let catTitle = activeCategoryInfo ? `${activeCategoryInfo.label} 일정` : 'My D-Days';
+    let catTitle = activeCategoryInfo ? `${activeCategoryInfo.label} 일정` : 'My DayMark';
 
     if (state.activeStatus === 'upcoming') catTitle += ' (예정)';
     else if (state.activeStatus === 'ongoing') catTitle += ' (진행 중)';
@@ -905,7 +981,7 @@
     const month = state.calendarMonth;
 
     // Update Month Header Title
-    calMonthTitle.textContent = `${year}년 ${month + 1}월`;
+    calMonthTitle.textContent = `${year}년 ${month + 1}월 ▼`;
 
     const firstDayOfMonth = new Date(year, month, 1);
     const startDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sun, 1 = Mon, ...
@@ -954,8 +1030,8 @@
 
     // Get active items according to category filter
     const activeItems = state.activeCategory === 'all'
-      ? state.items
-      : state.items.filter(item => item.category === state.activeCategory);
+      ? state.items.filter(item=>!item.hidden)
+      : state.items.filter(item => !item.hidden && item.category === state.activeCategory);
 
     // Build HTML for each cell
     const cellsHtml = cells.map((cell) => {
@@ -1009,16 +1085,18 @@
 
         const categoryInfo = getCategoryById(event.category);
         const shouldShowText = (connectorClass === 'event-single' || connectorClass === 'event-start');
+        const eventLabel = `${event.important ? '⭐ ' : ''}${escapeHtml(event.title)}`;
+        const eventTitle = `${escapeHtml(event.title)} (${formatDateRange(event.startDate, event.endDate)})`;
 
         return `
           <div 
             class="cal-event-bar ${connectorClass} ${categoryInfo.eventClass}" style="background-color:${categoryInfo.color};border-color:${categoryInfo.color}" 
             data-id="${event.id}" 
-            title="${escapeHtml(event.title)} (${formatDateRange(event.startDate, event.endDate)})"
+            title="${eventTitle}"
             role="button"
             tabindex="0"
           >
-            ${shouldShowText ? `${event.important ? '⭐ ' : ''}${escapeHtml(event.title)}` : '&nbsp;'}
+            ${shouldShowText ? eventLabel : '&nbsp;'}
           </div>
         `;
       }).join('');
@@ -1057,7 +1135,7 @@
   function renderMobileCalendarAgenda() {
     if (!mobileCalendarAgenda) return;
     const date = state.selectedCalendarDate || toIsoDateString(getTodayMidnight());
-    const items = state.items.filter(item => item.startDate <= date && (item.endDate || item.startDate) >= date && (state.activeCategory === 'all' || item.category === state.activeCategory));
+    const items = state.items.filter(item => !item.hidden && item.startDate <= date && (item.endDate || item.startDate) >= date && (state.activeCategory === 'all' || item.category === state.activeCategory));
     mobileCalendarAgenda.innerHTML = `<div class="mobile-agenda-header"><h3>${formatDateWithDay(date)}</h3><button type="button" class="mobile-date-add-btn" data-add-date="${date}">＋ 이 날짜에 일정 추가</button></div>` + (items.length ? items.map(item => { const cat=getCategoryById(item.category); return `<button class="mobile-agenda-item" data-id="${item.id}" style="--agenda-color:${cat.color}"><span class="agenda-line"></span><span><b>${escapeHtml(item.title)}</b><small>${cat.icon} ${escapeHtml(cat.label)}</small></span></button>`; }).join('') : '<p>선택한 날짜의 일정이 없습니다.</p>');
   }
 
@@ -1071,7 +1149,7 @@
     renderCategoryActiveStates();
 
     if (state.currentView === 'dashboard') {
-      const representativeItem = getRepresentativeDDay(state.items);
+      const representativeItem = getRepresentativeDDay(state.items.filter(item=>!item.hidden));
       renderHeroSection(representativeItem);
       const filteredItems = getFilteredAndSortedItems();
       renderListSection(filteredItems);
@@ -1259,6 +1337,7 @@
     
     setCategoryRadio('personal');
     importantCheckbox.checked = false;
+    hiddenCheckbox.checked = false;
     clearFormErrors();
     
     closeDrawer();
@@ -1280,6 +1359,7 @@
     endDateInput.value = item.endDate || item.startDate;
     setCategoryRadio(item.category || 'personal');
     importantCheckbox.checked = Boolean(item.important);
+    hiddenCheckbox.checked = Boolean(item.hidden);
     clearFormErrors();
 
     closeDetailModal();
@@ -1305,6 +1385,7 @@
     const endVal = endDateInput.value.trim() || startVal;
     const categoryVal = getSelectedCategory();
     const importantVal = importantCheckbox.checked;
+    const hiddenVal = hiddenCheckbox.checked;
 
     let hasError = false;
 
@@ -1348,6 +1429,11 @@
       return;
     }
 
+    if (hiddenVal && !localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)) {
+      requestPin(() => ddayForm.requestSubmit(), true);
+      return;
+    }
+
     if (state.currentEditId) {
       // Edit existing D-Day
       const itemIndex = state.items.findIndex(item => item.id === state.currentEditId);
@@ -1359,6 +1445,7 @@
           endDate: endVal,
           category: categoryVal,
           important: importantVal
+          ,hidden: hiddenVal
         };
         saveDDays(state.items);
         renderApp();
@@ -1373,6 +1460,7 @@
         endDate: endVal,
         category: categoryVal,
         important: importantVal,
+        hidden: hiddenVal,
         checklist: [],
         createdAt: new Date().toISOString()
       };
@@ -1451,7 +1539,7 @@
 
   function renderCategoryManagement() {
     categoryManagementList.innerHTML = state.categories.map(cat => {
-      const count = state.items.filter(item => item.category === cat.id).length;
+      const count = state.items.filter(item => !item.hidden && item.category === cat.id).length;
       return `<button type="button" class="category-management-row" data-manage-category="${cat.id}"><span class="category-management-icon" style="color:${cat.color};background:${cat.color}15">${getIconSvg(cat.icon,22)}</span><span class="category-management-copy"><b>${escapeHtml(cat.name)}</b><small>${count} items</small></span><span class="category-management-color" style="background:${cat.color}"></span><span class="category-management-edit" aria-hidden="true">✎</span></button>`;
     }).join('');
   }
@@ -1487,7 +1575,8 @@
       if (index >= 0) state.categories[index] = { ...state.categories[index], name, icon, color };
       showToast('카테고리가 수정되었습니다.');
     } else {
-      state.categories.push({ id:`category_${Date.now()}`, name, icon, color, isDefault:false });
+      const newCategoryId = `category_${Date.now()}`;
+      state.categories.push({ id:newCategoryId, name, icon, color, isDefault:false });
       showToast('카테고리가 추가되었습니다.');
     }
     saveCategories();
@@ -1507,7 +1596,7 @@
       return;
     }
     state.currentCategoryDeleteId = category.id;
-    categoryMoveMessage.textContent = `'${category.name}' 카테고리를 사용하는 일정이 ${usedItems.length}개 있습니다. 이동할 카테고리를 선택하세요.`;
+    categoryMoveMessage.textContent = `'${category.name}' 카테고리를 사용하는 일정이 있습니다. 이동할 카테고리를 선택하세요.`;
     categoryMoveSelect.innerHTML = state.categories.filter(cat => cat.id !== category.id).map(cat => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join('');
     categoryModal.hidden = true;
     categoryMoveModal.hidden = false;
@@ -1523,6 +1612,14 @@
     saveDDays(state.items); saveCategories(); renderApp();
     categoryMoveModal.hidden = true; state.currentCategoryDeleteId = null; document.body.style.overflow = ''; showToast('일정을 이동하고 카테고리를 삭제했습니다.');
   }
+
+  function renderHiddenItems() {
+    const items=state.items.filter(item=>item.hidden);
+    hiddenItemsList.innerHTML=items.length ? items.map(item=>{const cat=getCategoryById(item.category),calc=calculateDDay(item.startDate),stats=getChecklistStats(item);return `<article class="dday-card hidden-item-card" data-hidden-id="${item.id}"><div class="card-meta-row"><span class="card-category-badge" style="color:${cat.color};background:${cat.color}18">${cat.icon} ${escapeHtml(cat.label)}</span><span class="card-dday-number">${calc.dDayText}</span></div><h3 class="card-title">${item.important?'⭐ ':''}${escapeHtml(item.title)}</h3><div class="card-target-date"><span>${formatDateRange(item.startDate,item.endDate)}</span>${stats.total?`<span class="card-checklist-compact">Check list ${stats.completed}/${stats.total}</span>`:''}</div><div class="card-bottom-row"><button class="btn-card-action" data-hidden-action="edit" data-id="${item.id}">수정</button><button class="btn-card-action btn-action-delete" data-hidden-action="delete" data-id="${item.id}">삭제</button></div></article>`}).join('') : '<div class="empty-state-card"><h3 class="empty-title">숨김 일정이 없습니다.</h3></div>';
+  }
+  function openHiddenItems(){requestHiddenAccess(()=>{renderHiddenItems();hiddenItemsModal.hidden=false;document.body.style.overflow='hidden';});}
+  function closeHiddenItems(){hiddenItemsModal.hidden=true;document.body.style.overflow='';}
+  function closeChangePin(){changePinModal.hidden=true;changePinError.textContent='';changePinForm.reset();document.body.style.overflow=hiddenItemsModal.hidden?'':'hidden';}
 
   // ==========================================
   // Event Listeners & Binding
@@ -1569,6 +1666,19 @@
       state.calendarYear = t.getFullYear();
       state.calendarMonth = t.getMonth();
       renderCalendar();
+    });
+
+    calMonthTitle.addEventListener('click', () => {
+      calendarJumpYear.innerHTML = Array.from({length:101}, (_,index) => 2000 + index).map(year => `<option value="${year}" ${year===state.calendarYear?'selected':''}>${year}년</option>`).join('');
+      calendarJumpMonth.innerHTML = Array.from({length:12}, (_,index) => `<option value="${index}" ${index===state.calendarMonth?'selected':''}>${index+1}월</option>`).join('');
+      calendarJumpModal.hidden = false; document.body.style.overflow = 'hidden'; setTimeout(() => calendarJumpYear.focus(), 50);
+    });
+    const closeCalendarJump = () => { calendarJumpModal.hidden = true; document.body.style.overflow = ''; };
+    closeCalendarJumpBtn.addEventListener('click', closeCalendarJump);
+    cancelCalendarJumpBtn.addEventListener('click', closeCalendarJump);
+    calendarJumpModal.addEventListener('click', event => { if (event.target === calendarJumpModal) closeCalendarJump(); });
+    calendarJumpForm.addEventListener('submit', event => {
+      event.preventDefault(); state.calendarYear = Number(calendarJumpYear.value); state.calendarMonth = Number(calendarJumpMonth.value); closeCalendarJump(); renderCalendar();
     });
 
     // Calendar Grid Event Click & Delegation
@@ -1704,17 +1814,14 @@
       if (editBtn) { e.preventDefault(); e.stopPropagation(); openCategoryModal(editBtn.dataset.editCategory); return; }
       const btn = e.target.closest('.nav-link[data-category]');
       if (!btn) return;
-      state.activeCategory = btn.dataset.category;
-      renderApp();
-      if (window.innerWidth < 1024) closeDrawer();
+      const categoryId = btn.dataset.category; state.activeCategory = categoryId; renderApp(); if (window.innerWidth < 1024) closeDrawer();
     });
 
     // Mobile Category Chips
     if (mobileCategoryChips) mobileCategoryChips.addEventListener('click', (e) => {
       const chip = e.target.closest('.category-chip');
       if (chip && chip.dataset.category) {
-        state.activeCategory = chip.dataset.category;
-        renderApp();
+        const categoryId = chip.dataset.category; state.activeCategory = categoryId; renderApp();
       }
     });
 
@@ -1763,6 +1870,17 @@
     iconPicker.addEventListener('click', e => { const btn=e.target.closest('[data-icon]'); if(!btn)return; iconPicker.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected')); btn.classList.add('selected'); updateCategoryPreview(); });
     colorPicker.addEventListener('click', e => { const btn=e.target.closest('[data-color]'); if(!btn)return; colorPicker.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected')); btn.classList.add('selected'); updateCategoryPreview(); });
     categoryNameInput.addEventListener('input', updateCategoryPreview);
+    pinForm.addEventListener('submit', handlePinSubmit);
+    closePinModalBtn.addEventListener('click', closePinModal);
+    cancelPinBtn.addEventListener('click', closePinModal);
+    pinModal.addEventListener('click', event => { if (event.target === pinModal) closePinModal(); });
+    hiddenItemsBtn.addEventListener('click', openHiddenItems);
+    closeHiddenItemsBtn.addEventListener('click', closeHiddenItems);
+    hiddenItemsModal.addEventListener('click',e=>{if(e.target===hiddenItemsModal)closeHiddenItems();});
+    hiddenItemsList.addEventListener('click',e=>{const action=e.target.closest('[data-hidden-action]');if(action){closeHiddenItems();action.dataset.hiddenAction==='edit'?openEditModal(action.dataset.id):openDeleteModal(action.dataset.id);return;}const card=e.target.closest('[data-hidden-id]');if(card){closeHiddenItems();openDetailModal(card.dataset.hiddenId);}});
+    changeHiddenPinBtn.addEventListener('click',()=>{changePinModal.hidden=false;document.body.style.overflow='hidden';setTimeout(()=>oldPinInput.focus(),50);});
+    closeChangePinBtn.addEventListener('click',closeChangePin);cancelChangePinBtn.addEventListener('click',closeChangePin);
+    changePinForm.addEventListener('submit',async e=>{e.preventDefault();const oldPin=oldPinInput.value.trim(),newPin=newPinInput.value.trim(),confirm=newPinConfirmInput.value.trim();if(!/^\d{4}$/.test(oldPin)||!/^\d{4}$/.test(newPin)){changePinError.textContent='PIN은 숫자 4자리여야 합니다.';return;}if(newPin!==confirm){changePinError.textContent='새 PIN이 일치하지 않습니다.';return;}if(await hashPin(oldPin)!==localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)){changePinError.textContent='기존 PIN이 올바르지 않습니다.';return;}localStorage.setItem(PRIVACY_PIN_STORAGE_KEY,await hashPin(newPin));closeChangePin();showToast('PIN이 변경되었습니다.');});
     deleteCategoryBtn.addEventListener('click', requestCategoryDelete);
     cancelCategoryMoveBtn.addEventListener('click', () => { categoryMoveModal.hidden=true; state.currentCategoryDeleteId=null; document.body.style.overflow=''; });
     confirmCategoryMoveBtn.addEventListener('click', confirmCategoryMoveAndDelete);
@@ -1806,7 +1924,15 @@
     // Global Keyboard Support
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (!formModal.hidden) {
+        if (!changePinModal.hidden) {
+          closeChangePin();
+        } else if (!hiddenItemsModal.hidden) {
+          closeHiddenItems();
+        } else if (!pinModal.hidden) {
+          closePinModal();
+        } else if (!calendarJumpModal.hidden) {
+          calendarJumpModal.hidden = true; document.body.style.overflow = '';
+        } else if (!formModal.hidden) {
           closeFormModal();
         } else if (!settingsModal.hidden) {
           closeSettings();
@@ -1852,6 +1978,8 @@
         openDetailModal(e.target.dataset.id);
       }
     });
+    heroSection.addEventListener('click', event => { const card=event.target.closest('.hero-card[data-id]'); if(card) openDetailModal(card.dataset.id); });
+    heroSection.addEventListener('keydown', event => { if ((event.key==='Enter'||event.key===' ') && event.target.matches('.hero-card[data-id]')) { event.preventDefault(); openDetailModal(event.target.dataset.id); } });
 
     // Input error clears
     titleInput.addEventListener('input', () => {
@@ -1871,6 +1999,7 @@
     state.categories = loadCategories();
     syncCategoryMap();
     state.items = loadDDays();
+    saveDDays(state.items);
     initEventListeners();
     renderApp();
   }
