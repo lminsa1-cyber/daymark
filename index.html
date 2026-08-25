@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DayMark - D-Day &amp; Schedule</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='6' width='24' height='22' rx='5' fill='%231646D8'/%3E%3Cpath d='M10 3v6M22 3v6M4 12h24' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='m10 20 4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <script>
+    try {
+      const savedAppearance = JSON.parse(localStorage.getItem('daymark-v5-settings') || '{}');
+      document.documentElement.dataset.fontFamily = ['system','pretendard','malgun','arial','georgia','gulim','batang'].includes(savedAppearance.fontFamily) ? savedAppearance.fontFamily : 'system';
+      document.documentElement.dataset.fontSize = ['small','medium','large'].includes(savedAppearance.fontSize) ? savedAppearance.fontSize : 'medium';
+    } catch (_) {
+      document.documentElement.dataset.fontFamily = 'system';
+      document.documentElement.dataset.fontSize = 'medium';
+    }
+  </script>
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Step 2 card layout refinement */
+    .cards-container{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+    .dday-card{min-height:184px;height:100%;display:flex;flex-direction:column;padding:1.15rem}
+    .card-meta-row{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;min-height:34px}
+    .card-meta-left{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem;min-width:0}
+    .card-dday-badge-wrap{flex:0 0 auto;margin:0;order:initial;align-items:flex-end;text-align:right}
+    .card-dday-number{font-size:1.75rem;line-height:1;white-space:nowrap}
+    .card-top-row{display:block;flex:0 0 auto;margin-top:1.1rem}
+    .card-title-area{display:block;min-width:0}
+    .card-title{min-height:2.7em;margin:0 0 .5rem;display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.35;text-overflow:ellipsis;word-break:break-word}
+    .card-target-date{min-height:1.2rem;margin:0;font-size:.78rem;justify-content:space-between;gap:.65rem;width:100%}.card-date-value{display:flex;align-items:center;gap:.35rem;min-width:0;white-space:nowrap}.card-checklist-compact{flex:0 0 auto;margin-left:auto;color:var(--primary);font-size:.72rem;font-weight:700;white-space:nowrap}.card-checklist-compact.completed{color:#087a55}
+    .card-bottom-row{position:static;opacity:1;margin-top:auto;padding-top:.85rem;justify-content:flex-end;border-top:0}
+    @media(min-width:1400px){.cards-container{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    @media(min-width:768px) and (max-width:1099px){.cards-container{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:767px){.cards-container{grid-template-columns:1fr}.dday-card{min-height:168px}.card-title{min-height:auto}.card-bottom-row{margin-top:auto}}
+    /* Step 3-A: schedule checklist */
+    #detailModal .modal-card{width:min(700px,calc(100% - 48px));max-width:700px}
+    .checklist-section{margin-top:22px;padding-top:20px;border-top:1px solid var(--border-color)}
+    .checklist-heading,.checklist-item{display:flex;align-items:center}
+    .checklist-heading{justify-content:space-between;gap:16px}.checklist-heading h4{margin:0;font-size:1rem}.checklist-heading p{margin:4px 0 0;color:var(--text-muted);font-size:.82rem}.checklist-heading strong{color:var(--primary);white-space:nowrap}
+    .checklist-progress{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;margin-top:14px}.checklist-progress>div{height:7px;overflow:hidden;border-radius:999px;background:#e5e7f5}.checklist-progress span{display:block;height:100%;border-radius:inherit;background:var(--primary);transition:width .2s ease}.checklist-progress b{min-width:36px;color:var(--primary);font-size:.8rem;text-align:right}
+    .checklist-complete-message{margin:12px 0 0;padding:9px 12px;border-radius:9px;color:#087a55;background:#eafaf4;font-size:.84rem;font-weight:700}
+    .checklist-list{display:grid;gap:8px;margin-top:15px}.checklist-item{min-height:46px;gap:10px;padding:8px 10px;border:1px solid var(--border-color);border-radius:10px;background:#fff}.checklist-check-label{display:flex;flex:1;align-items:center;gap:10px;min-width:0;cursor:pointer}.checklist-checkbox{width:18px;height:18px;accent-color:var(--primary);flex:0 0 auto}.checklist-text{overflow-wrap:anywhere;line-height:1.35}.checklist-item.completed .checklist-text{color:var(--text-muted);text-decoration:line-through}
+    .checklist-actions{display:flex;gap:2px;margin-left:auto}.checklist-action{min-width:34px;min-height:34px;border:0;border-radius:8px;color:var(--text-muted);background:transparent;cursor:pointer}.checklist-action:hover,.checklist-action:focus-visible{color:var(--primary);background:var(--primary-soft)}.checklist-action.delete:hover,.checklist-action.delete:focus-visible{color:var(--danger);background:#fff0f0}
+    .checklist-edit-form{display:flex;gap:8px;flex:1}.checklist-edit-input,.checklist-add-form input{min-width:0;flex:1;padding:9px 11px;border:1px solid var(--border-color);border-radius:8px;font:inherit}.checklist-edit-form button,.checklist-add-form button{padding:0 16px;border:0;border-radius:8px;color:#fff;background:var(--primary);font-weight:700;cursor:pointer}
+    .checklist-empty{margin-top:15px;padding:18px;border-radius:10px;color:var(--text-muted);background:var(--surface-muted);text-align:center;font-size:.86rem}.checklist-add-area{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:stretch;margin-top:12px}.checklist-add-form:not([hidden]){display:contents}.checklist-add-toggle{grid-column:1/-1;width:100%;min-height:44px;border:1px dashed var(--primary);border-radius:10px;color:var(--primary);background:transparent;font-weight:700;cursor:pointer}.checklist-add-form:not([hidden])+.checklist-add-toggle{grid-column:3;width:auto;padding:0 16px;border-style:solid;border-color:var(--border-color);color:var(--text-secondary);background:#fff}.checklist-error{min-height:18px;margin:5px 0 0;color:var(--danger);font-size:.78rem}
+    [hidden]{display:none!important}
+    @media(max-width:767px){#detailModal{align-items:flex-end;padding:0}#detailModal .modal-card{width:100%;max-height:90vh;margin:0;border-radius:20px 20px 0 0}.checklist-action{min-width:44px;min-height:44px}.checklist-add-form:not([hidden]) input{grid-column:1/-1;min-height:44px}.checklist-add-form:not([hidden]) button[type="submit"]{grid-column:3;grid-row:2;min-height:44px}.checklist-add-form:not([hidden])+.checklist-add-toggle{grid-column:2;grid-row:2;min-height:44px}}
+
+    /* Category add/edit modal overflow refinement */
+    #categoryModal .modal-card{width:min(600px,calc(100vw - 32px));max-width:600px;overflow-x:hidden}
+    #categoryModal .modal-form,#categoryModal .form-group,#categoryModal .icon-picker,#categoryModal .color-picker,#categoryModal .category-preview,#categoryModal .category-calendar-preview{min-width:0;max-width:100%;box-sizing:border-box}
+    #categoryModal .icon-picker{display:grid;grid-template-columns:repeat(8,minmax(44px,1fr));gap:.55rem;width:100%;overflow:hidden}
+    #categoryModal .icon-option{width:100%;max-width:52px;justify-self:center;box-sizing:border-box}
+    #categoryModal .color-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(38px,1fr));gap:.7rem;width:100%;overflow:hidden}
+    #categoryModal .color-option{justify-self:center;box-sizing:border-box}
+    #categoryModal .category-preview{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.8rem;width:100%;overflow:hidden}
+    #categoryModal .category-preview>*,#categoryModal .category-calendar-preview>*{min-width:0;max-width:100%;box-sizing:border-box}
+    @media(max-width:767px){#categoryModal .modal-card{width:100%;max-width:none;overflow-x:hidden}#categoryModal .icon-picker{grid-template-columns:repeat(auto-fit,minmax(48px,1fr))}#categoryModal .color-picker{grid-template-columns:repeat(auto-fit,minmax(42px,1fr))}#categoryModal .category-preview{grid-template-columns:1fr}}
+
+    /* Calendar date-to-schedule connection */
+    @media(min-width:768px){.calendar-cell[data-date]{cursor:pointer}.calendar-cell[data-date]:hover{background:#f8f8ff}.cell-add-indicator{margin-left:auto;padding-right:.3rem;color:var(--primary);font-size:1rem;font-weight:700;opacity:0;transform:translateY(-1px);transition:opacity .15s ease}.calendar-cell:hover .cell-add-indicator{opacity:.65}}
+    .mobile-agenda-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:.25rem 0 1rem}.mobile-agenda-header h3{margin:0}.mobile-date-add-btn{min-height:42px;padding:.55rem .8rem;border:1px solid var(--primary-border);border-radius:9px;color:var(--primary);background:#fff;font-weight:700;cursor:pointer}.mobile-date-add-btn:hover,.mobile-date-add-btn:focus-visible{background:var(--primary-light)}
+    @media(min-width:768px){.mobile-agenda-header{display:none}}
+    @media(max-width:767px){.cell-add-indicator{display:none}.mobile-agenda-header{align-items:flex-start;flex-direction:column}.mobile-date-add-btn{width:100%}}
+
+    /* Step 3-B: typography settings */
+    :root{--app-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",Arial,sans-serif;--app-font-scale:1}
+    html[data-font-family="pretendard"]{--app-font-family:Pretendard,"Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif}html[data-font-family="malgun"]{--app-font-family:"Malgun Gothic","Segoe UI",Arial,sans-serif}html[data-font-family="arial"]{--app-font-family:Arial,"Malgun Gothic",sans-serif}html[data-font-family="georgia"]{--app-font-family:Georgia,"Malgun Gothic",serif}html[data-font-family="gulim"]{--app-font-family:"Gulim","굴림",sans-serif}html[data-font-family="batang"]{--app-font-family:"Batang","바탕",serif}
+    html[data-font-size="small"]{--app-font-scale:.94}html[data-font-size="large"]{--app-font-scale:1.1}html{font-size:calc(16px * var(--app-font-scale))}body,button,input,select,textarea{font-family:var(--app-font-family)}
+    .btn-settings{display:flex;align-items:center;gap:.55rem;width:100%;min-height:42px;margin-top:.4rem;padding:.65rem 1rem;border:1px solid #c9cddd;border-radius:9px;color:var(--text-main);background:#fff;font-weight:650;text-align:left;cursor:pointer}.btn-settings:hover,.btn-settings:focus-visible{color:var(--primary);background:var(--primary-light)}
+    #settingsModal .modal-card{width:min(560px,calc(100vw - 32px));max-width:560px;overflow-x:hidden}.settings-section-title{margin:0 0 1rem;font-size:.88rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}.settings-size-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem}.settings-size-option{position:relative}.settings-size-option input{position:absolute;opacity:0;pointer-events:none}.settings-size-option span{display:grid;place-items:center;min-height:44px;border:1px solid var(--border-light);border-radius:9px;background:#fff;cursor:pointer}.settings-size-option input:checked+span{border-color:var(--primary);color:var(--primary);background:var(--primary-light);font-weight:700;box-shadow:0 0 0 1px var(--primary)}.settings-size-option input:focus-visible+span{outline:3px solid rgba(67,56,202,.22);outline-offset:2px}
+    .settings-preview{min-width:0;padding:1.1rem;border:1px solid var(--border-light);border-radius:12px;background:#fafbfc;overflow:hidden}.settings-preview-top,.settings-preview-bottom{display:flex;align-items:center;justify-content:space-between;gap:1rem}.settings-preview-title{min-width:0;font-size:1.08em;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.settings-preview-dday{flex:0 0 auto;color:var(--primary);font-size:1.35em;font-weight:800}.settings-preview-date{margin:.55rem 0 0;color:var(--text-muted);font-size:.82em}.settings-preview-check{margin:.8rem 0 0;color:#087a55;font-size:.82em;font-weight:700}.settings-actions{justify-content:space-between}.settings-actions .settings-save-group{display:flex;gap:.6rem}.btn-reset-settings{margin-right:auto}
+    @media(max-width:767px){html[data-font-size="large"]{--app-font-scale:1.07}#settingsModal .modal-card{width:100%;max-width:none}.settings-actions{flex-wrap:wrap}.settings-actions .settings-save-group{display:flex;flex:1;justify-content:flex-end}.btn-reset-settings{width:100%}.settings-preview-top{gap:.5rem}}
+
+    /* DayMark branding */
+    .daymark-brand{display:flex;align-items:center;gap:.7rem;min-width:0}.daymark-logo{display:block;flex:0 0 auto;width:35px;height:35px;color:var(--primary)}.daymark-copy{display:grid;gap:.08rem;min-width:0}.daymark-title{margin:0;color:var(--primary);font-size:1.55rem;font-weight:800;line-height:1.1;letter-spacing:-.035em}.daymark-subtitle{margin:0;color:var(--text-muted);font-size:.76rem;line-height:1.25;white-space:nowrap}
+    .mobile-brand{display:flex;align-items:center;gap:.5rem;min-width:0}.mobile-brand .daymark-logo{width:28px;height:28px}.mobile-brand .daymark-title{font-size:1.05rem}.mobile-brand .daymark-subtitle{font-size:.62rem}.mobile-brand .daymark-copy{gap:0}
+    @media(max-width:359px){.mobile-brand .daymark-logo{width:25px;height:25px}.mobile-brand .daymark-title{font-size:.95rem}.mobile-brand .daymark-subtitle{font-size:.57rem}}
+
+    /* DayMark Navy + Blue theme */
+    :root{--brand-navy:#000D3A;--primary:#1646D8;--primary-hover:#1039B5;--primary-active:#0B2D91;--primary-bright:#2563EB;--primary-light:#EAF1FF;--primary-soft:#EAF1FF;--primary-subtle:#C9D8FF;--primary-border:#9AB7F5;--future-color:#1646D8;--future-bg:#EAF1FF;--future-border:#BFD1FA;--text-main:#111827;--text-primary:#111827;--text-muted:#6B7280;--text-secondary:#6B7280;--bg-page:#F5F8FF;--page-bg:#F5F8FF;--bg-sidebar:#F5F8FF;--bg-card:#FFFFFF;--surface:#FFFFFF;--border-light:#D9E2F2;--border-color:#D9E2F2;--border-focus:#2563EB}
+    body,.main-content{background:#F5F8FF;color:#111827}.sidebar,.mobile-topbar{background:#F5F8FF;border-color:#D9E2F2}.daymark-title{color:#000D3A}.daymark-logo{color:#1646D8}.view-tabs-container{background:#FFFFFF;border-color:#D9E2F2}
+    .nav-link:hover{background:#EFF4FF}.nav-link.active{color:#1646D8;background:#EAF1FF}.nav-link.active .nav-count-badge{color:#1646D8;background:#FFFFFF}.view-tab-btn.active,.view-tab-btn[aria-selected="true"]{color:#1646D8;border-color:#1646D8}
+    .hero-card,.dday-card,.calendar-card,.modal-card{background:#FFFFFF;border-color:#D9E2F2}.dday-card:hover{border-color:#AFC5F4;box-shadow:0 5px 16px rgba(22,70,216,.08)}.hero-progress span{background:#1646D8}.calendar-grid,.calendar-cell,.calendar-weekdays{border-color:#D9E2F2}.calendar-cell[data-date]:hover{background:#F5F8FF}.calendar-cell.cell-today .cell-day-number,.cell-selected .cell-day-number{background:#1646D8;color:#FFFFFF;box-shadow:0 3px 8px rgba(22,70,216,.2)}
+    .btn-primary,.btn-sidebar-add,.btn-mobile-add{background:#1646D8;border-color:#1646D8;color:#FFFFFF}.btn-primary:hover,.btn-sidebar-add:hover,.btn-mobile-add:hover{background:#1039B5;border-color:#1039B5}.btn-secondary{background:#FFFFFF;border-color:#D9E2F2;color:#111827}.status-tab-btn.active,.category-chip.active{color:#1646D8;background:#EAF1FF;border-color:#1646D8}
+    .search-input,.sort-select,.form-input,.checklist-edit-input,.checklist-add-form input{background:#FFFFFF;border-color:#D9E2F2}.search-input:focus,.sort-select:focus,.form-input:focus,.checklist-edit-input:focus,.checklist-add-form input:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.13)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline-color:#2563EB}
+    .checklist-progress span,.card-checklist-track span{background:#1646D8}.checklist-checkbox{accent-color:#1646D8}.settings-size-option input:checked+span{border-color:#1646D8;color:#1646D8;background:#EAF1FF;box-shadow:0 0 0 1px #1646D8}.picker-option:hover,.picker-option.selected{border-color:#1646D8;color:#1646D8;box-shadow:0 0 0 2px rgba(22,70,216,.12)}.color-option.selected{box-shadow:0 0 0 3px #1646D8}
+    .btn-settings:hover,.btn-settings:focus-visible,.mobile-date-add-btn:hover,.mobile-date-add-btn:focus-visible{color:#1646D8;background:#EAF1FF}.mobile-date-add-btn{color:#1646D8;border-color:#9AB7F5}.category-management-row:hover{background:#F5F8FF}.modal-header,.modal-actions,.checklist-section{border-color:#D9E2F2}
+
+    /* Deep Navy is reserved for branding and typography hierarchy */
+    .daymark-title{color:#000D3A}.view-tab-btn{color:#000D3A}.view-tab-btn.active,.view-tab-btn[aria-selected="true"]{color:#1646D8;border-color:#1646D8}.list-title,.cal-month-title{color:#000D3A}.hero-title,.card-title{color:#111827}
+
+    /* Desktop sidebar brand alignment */
+    @media(min-width:1024px){.sidebar-header{justify-content:center;margin-bottom:0}.sidebar .daymark-brand{width:100%;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;padding:12px 0 22px;text-align:center}.sidebar .daymark-logo{width:44px;height:44px}.sidebar .daymark-copy{justify-items:center;gap:4px}.sidebar .daymark-title{font-size:1.8rem;font-weight:800;letter-spacing:-.03em}.sidebar .daymark-subtitle{font-size:.76rem;font-weight:450}.sidebar-nav .nav-list{margin-top:0}}
+  </style>
+</head>
+<body>
+  <!-- Mobile Top Header (Visible on Mobile/Tablet) -->
+  <header class="mobile-topbar" id="mobileTopbar">
+    <button type="button" class="btn-icon-menu" id="drawerToggleBtn" aria-label="메뉴 열기" aria-controls="sidebar" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+    <div class="mobile-brand" aria-label="DayMark, D-Day & Schedule">
+      <svg class="daymark-logo" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4.5" y="6.5" width="27" height="25" rx="5" stroke="currentColor" stroke-width="2.3"/><path d="M11 3.5v7M25 3.5v7M4.5 13h27" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/><path d="m11 22 4.2 4.2L25 16.5" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="daymark-copy"><strong class="daymark-title">DayMark</strong><small class="daymark-subtitle">D-Day &amp; Schedule</small></span>
+    </div>
+    <button type="button" class="btn btn-primary btn-mobile-add" id="mobileAddBtn" aria-label="새 일정 추가">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Sidebar Backdrop (Mobile Drawer) -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+  <!-- Main Dashboard Layout -->
+  <div class="dashboard-layout">
+    
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="사이드바 네비게이션">
+      <div class="sidebar-inner">
+        <!-- Sidebar Brand Header -->
+        <div class="sidebar-header">
+          <div class="sidebar-brand-group daymark-brand">
+            <svg class="daymark-logo" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4.5" y="6.5" width="27" height="25" rx="5" stroke="currentColor" stroke-width="2.3"/><path d="M11 3.5v7M25 3.5v7M4.5 13h27" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/><path d="m11 22 4.2 4.2L25 16.5" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div class="daymark-copy"><h1 class="daymark-title">DayMark</h1><p class="daymark-subtitle">D-Day &amp; Schedule</p></div>
+          </div>
+          <button type="button" class="btn-close-drawer" id="closeDrawerBtn" aria-label="사이드바 닫기">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Date Info Badge -->
+        <div class="sidebar-date-card" id="sidebarDateDisplay" aria-label="오늘 날짜">
+          <svg class="header-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <span id="currentDateDisplay">오늘 날짜 로딩 중...</span>
+        </div>
+
+        <!-- Category Filter Navigation -->
+        <nav class="sidebar-nav" aria-label="카테고리 필터">
+          <div class="nav-section-title">CATEGORIES</div>
+          <ul class="nav-list" id="categoryNavList" role="list">
+            <li class="nav-item">
+              <button type="button" class="nav-link active" data-category="all" aria-current="page">
+                <span class="nav-icon-text">
+                  <span class="nav-icon" aria-hidden="true">▣</span>
+                  <span>전체 일정</span>
+                </span>
+                <span class="nav-count-badge" id="countAll">0</span>
+              </button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-category="work">
+                <span class="nav-icon-text">
+                  <span class="nav-icon" aria-hidden="true">💼</span>
+                  <span>업무</span>
+                </span>
+                <span class="nav-count-badge" id="countWork">0</span>
+              </button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-category="company">
+                <span class="nav-icon-text">
+                  <span class="nav-icon" aria-hidden="true">🏢</span>
+                  <span>회사</span>
+                </span>
+                <span class="nav-count-badge" id="countCompany">0</span>
+              </button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-category="personal">
+                <span class="nav-icon-text">
+                  <span class="nav-icon" aria-hidden="true">👤</span>
+                  <span>개인</span>
+                </span>
+                <span class="nav-count-badge" id="countPersonal">0</span>
+              </button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" data-category="other">
+                <span class="nav-icon-text">
+                  <span class="nav-icon" aria-hidden="true">📌</span>
+                  <span>기타</span>
+                </span>
+                <span class="nav-count-badge" id="countOther">0</span>
+              </button>
+            </li>
+          </ul>
+          <button type="button" class="btn-category-manage" id="addCategoryBtn">+ 카테고리 추가</button>
+          <button type="button" class="btn-category-manage btn-category-list" id="manageCategoryBtn">⚙ 카테고리 관리</button>
+          <button type="button" class="btn-settings" id="settingsBtn" aria-haspopup="dialog">⚙ 화면 설정</button>
+        </nav>
+
+        <!-- Sidebar Footer Action -->
+        <div class="sidebar-footer">
+          <button type="button" class="btn btn-primary btn-sidebar-add" id="sidebarAddBtn">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>새 일정 추가</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content" id="mainContent">
+      
+      <!-- Top Navigation Tabs (Dashboard / Calendar) -->
+      <nav class="view-tabs-container" aria-label="메인 화면 탭">
+        <div class="view-tabs" role="tablist">
+          <button type="button" class="view-tab-btn active" id="tabDashboardBtn" data-view="dashboard" role="tab" aria-selected="true" aria-controls="dashboardView">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span>Dashboard</span>
+          </button>
+          <button type="button" class="view-tab-btn" id="tabCalendarBtn" data-view="calendar" role="tab" aria-selected="false" aria-controls="calendarView">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>Calendar</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- ==========================================
+           VIEW 1: Dashboard View
+           ========================================== -->
+      <div class="view-panel" id="dashboardView" role="tabpanel" aria-labelledby="tabDashboardBtn">
+        
+        <!-- Representative Hero D-Day Section -->
+        <section class="hero-section" aria-label="대표 D-Day" id="heroSection">
+          <!-- Dynamically rendered via script.js -->
+        </section>
+
+        <!-- Dashboard Controls Section -->
+        <section class="dashboard-controls" aria-label="대시보드 검색 및 필터">
+          
+          <!-- Search & Sort Row -->
+          <div class="controls-top-row">
+            <div class="search-box">
+              <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input 
+                type="search" 
+                id="searchInput" 
+                class="search-input" 
+                placeholder="D-Day 검색..." 
+                aria-label="일정명 검색"
+                autocomplete="off"
+              >
+              <button type="button" class="btn-clear-search" id="clearSearchBtn" aria-label="검색어 지우기" hidden>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div class="sort-box">
+              <label for="sortSelect" class="sr-only">정렬 기준</label>
+              <select id="sortSelect" class="sort-select" aria-label="일정 정렬">
+                <option value="closest" selected>가까운 날짜순</option>
+                <option value="farthest">먼 날짜순</option>
+                <option value="newest">최근 등록순</option>
+                <option value="oldest">오래된 등록순</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Status Filter Tabs & Mobile Category Bar -->
+          <div class="controls-bottom-row">
+            <!-- Status Filter Tabs -->
+            <div class="status-filter-tabs" id="statusFilterTabs" role="tablist" aria-label="일정 상태 필터">
+              <button type="button" class="status-tab-btn active" data-status="all" role="tab" aria-selected="true">전체</button>
+              <button type="button" class="status-tab-btn" data-status="upcoming" role="tab" aria-selected="false">예정</button>
+              <button type="button" class="status-tab-btn" data-status="ongoing" role="tab" aria-selected="false">진행 중</button>
+              <button type="button" class="status-tab-btn" data-status="completed" role="tab" aria-selected="false">완료</button>
+            </div>
+
+            <!-- Mobile Category Scroll Bar -->
+            <div class="mobile-category-chips" id="mobileCategoryChips" aria-label="모바일 카테고리 빠른 필터">
+              <button type="button" class="category-chip active" data-category="all">전체</button>
+              <button type="button" class="category-chip" data-category="work">💼 업무</button>
+              <button type="button" class="category-chip" data-category="company">🏢 회사</button>
+              <button type="button" class="category-chip" data-category="personal">👤 개인</button>
+              <button type="button" class="category-chip" data-category="other">📌 기타</button>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- D-Day Cards List Section -->
+        <section class="list-section" aria-label="D-Day 목록">
+          <div class="list-header">
+            <div class="list-title-group">
+              <h2 class="list-title" id="listHeaderTitle">My D-Days</h2>
+              <span class="list-count-badge" id="listCountBadge" aria-label="현재 필터된 일정 수">0</span>
+            </div>
+            <button type="button" class="btn btn-primary btn-add-desktop" id="openAddModalBtn">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>+ 새 일정 추가</span>
+            </button>
+          </div>
+
+          <!-- Cards Container -->
+          <div class="cards-container" id="cardsContainer" role="region" aria-live="polite">
+            <!-- Dynamically populated cards or empty state -->
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ==========================================
+           VIEW 2: Calendar View
+           ========================================== -->
+      <div class="view-panel" id="calendarView" role="tabpanel" aria-labelledby="tabCalendarBtn" hidden>
+        
+        <div class="calendar-card">
+          <!-- Calendar Header Controls -->
+          <div class="calendar-header">
+            <div class="cal-header-left">
+              <button type="button" class="btn btn-secondary btn-cal-today" id="calTodayBtn">오늘</button>
+            </div>
+            <div class="cal-header-center">
+              <button type="button" class="btn-cal-arrow" id="calPrevMonthBtn" aria-label="이전 달 이동">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+              </button>
+              <h2 class="cal-month-title" id="calMonthTitle">2026년 8월</h2>
+              <button type="button" class="btn-cal-arrow" id="calNextMonthBtn" aria-label="다음 달 이동">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+            </div>
+            <div class="cal-header-right">
+              <span class="cal-category-indicator" id="calCategoryIndicator">전체 일정</span>
+            </div>
+          </div>
+
+          <!-- Calendar Weekday Names Header (7 Columns) -->
+          <div class="calendar-weekdays" aria-hidden="true">
+            <div class="cal-weekday col-sun">일</div>
+            <div class="cal-weekday">월</div>
+            <div class="cal-weekday">화</div>
+            <div class="cal-weekday">수</div>
+            <div class="cal-weekday">목</div>
+            <div class="cal-weekday">금</div>
+            <div class="cal-weekday col-sat">토</div>
+          </div>
+
+          <!-- Calendar Days Grid (7 Columns) -->
+          <div class="calendar-grid" id="calendarGrid" role="grid" aria-label="월간 달력">
+            <!-- Dynamically populated day cells -->
+          </div>
+        </div>
+        <section class="mobile-calendar-agenda" id="mobileCalendarAgenda" aria-live="polite"></section>
+
+      </div>
+
+      <!-- Footer -->
+      <footer class="app-footer">
+        <p>DayMark &copy; 브라우저에 안전하게 저장됩니다.</p>
+      </footer>
+
+    </main>
+
+  </div>
+
+  <!-- Typography Settings Modal -->
+  <div class="modal-overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle" hidden>
+    <div class="modal-card">
+      <div class="modal-header"><div><h3 class="modal-title" id="settingsModalTitle">설정</h3><p class="modal-subtitle">화면 설정</p></div><button type="button" class="btn-close" id="closeSettingsBtn" aria-label="설정 닫기">×</button></div>
+      <form class="modal-form" id="settingsForm">
+        <div class="form-group"><label class="form-label" for="fontFamilySelect">글꼴</label><select class="form-input" id="fontFamilySelect"><option value="system">시스템 기본</option><option value="pretendard">Pretendard</option><option value="malgun">맑은 고딕</option><option value="arial">Arial</option><option value="georgia">Georgia</option><option value="gulim">굴림</option><option value="batang">바탕</option></select></div>
+        <fieldset class="form-group"><legend class="form-label">글자 크기</legend><div class="settings-size-options"><label class="settings-size-option"><input type="radio" name="fontSize" value="small"><span>작게</span></label><label class="settings-size-option"><input type="radio" name="fontSize" value="medium"><span>기본</span></label><label class="settings-size-option"><input type="radio" name="fontSize" value="large"><span>크게</span></label></div></fieldset>
+        <div class="form-group"><span class="form-label">미리보기</span><div class="settings-preview" id="settingsPreview"><div class="settings-preview-top"><strong class="settings-preview-title">DayMark</strong><b class="settings-preview-dday">D-34</b></div><p class="settings-preview-date">2026.09.28 ~ 2026.10.04</p><p class="settings-preview-check">✓ Check list 완료 3/3</p></div></div>
+        <div class="modal-actions settings-actions"><button type="button" class="btn btn-secondary btn-reset-settings" id="resetSettingsBtn">기본값으로 복원</button><div class="settings-save-group"><button type="button" class="btn btn-secondary" id="cancelSettingsBtn">취소</button><button type="submit" class="btn btn-primary">저장</button></div></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add / Edit Modal -->
+  <div class="modal-overlay" id="formModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">새 일정 추가</h3>
+        <button type="button" class="btn-close" id="closeFormModalBtn" aria-label="모달 닫기">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      
+      <form id="ddayForm" class="modal-form" novalidate>
+        <input type="hidden" id="editItemId" value="">
+        
+        <!-- Title Input -->
+        <div class="form-group">
+          <label for="titleInput" class="form-label">일정명 <span class="required" aria-hidden="true">*</span></label>
+          <input 
+            type="text" 
+            id="titleInput" 
+            name="title" 
+            class="form-input" 
+            placeholder="예: 중요한 일정" 
+            maxlength="60" 
+            required 
+            autocomplete="off"
+          >
+          <p class="form-error-msg" id="titleError" role="alert"></p>
+        </div>
+
+        <!-- Category Selector -->
+        <div class="form-group">
+          <label class="form-label">카테고리 <span class="required" aria-hidden="true">*</span></label>
+          <div class="category-radio-group" id="categoryRadioGroup" role="radiogroup" aria-label="카테고리 선택">
+            <label class="category-radio-label">
+              <input type="radio" name="category" value="work" class="category-radio-input">
+              <span class="category-radio-button category-btn-work">
+                <span class="cat-icon" aria-hidden="true">💼</span>
+                <span>업무</span>
+              </span>
+            </label>
+
+            <label class="category-radio-label">
+              <input type="radio" name="category" value="company" class="category-radio-input">
+              <span class="category-radio-button category-btn-company">
+                <span class="cat-icon" aria-hidden="true">🏢</span>
+                <span>회사</span>
+              </span>
+            </label>
+
+            <label class="category-radio-label">
+              <input type="radio" name="category" value="personal" class="category-radio-input" checked>
+              <span class="category-radio-button category-btn-personal">
+                <span class="cat-icon" aria-hidden="true">👤</span>
+                <span>개인</span>
+              </span>
+            </label>
+
+            <label class="category-radio-label">
+              <input type="radio" name="category" value="other" class="category-radio-input">
+              <span class="category-radio-button category-btn-other">
+                <span class="cat-icon" aria-hidden="true">📌</span>
+                <span>기타</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Date Range (Start & End Date) -->
+        <div class="form-row-dates">
+          <div class="form-group form-group-half">
+            <label for="startDateInput" class="form-label">일정 시작일 <span class="required" aria-hidden="true">*</span></label>
+            <input 
+              type="date" 
+              id="startDateInput" 
+              name="startDate" 
+              class="form-input" 
+              required
+            >
+            <p class="form-error-msg" id="startDateError" role="alert"></p>
+          </div>
+
+          <div class="form-group form-group-half">
+            <label for="endDateInput" class="form-label">일정 종료일 <span class="required" aria-hidden="true">*</span></label>
+            <input 
+              type="date" 
+              id="endDateInput" 
+              name="endDate" 
+              class="form-input" 
+              required
+            >
+            <p class="form-error-msg" id="endDateError" role="alert"></p>
+          </div>
+        </div>
+
+        <!-- Important Checkbox -->
+        <div class="form-group">
+          <label class="checkbox-label" for="importantCheckbox">
+            <input type="checkbox" id="importantCheckbox" name="important" class="form-checkbox">
+            <span class="checkbox-text">⭐ 중요 일정으로 설정</span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="cancelFormBtn">취소</button>
+          <button type="submit" class="btn btn-primary" id="saveFormBtn">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="categoryModal" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle" hidden>
+    <div class="modal-card">
+      <div class="modal-header"><h3 class="modal-title" id="categoryModalTitle">카테고리 추가</h3><button type="button" class="btn-close" id="closeCategoryModalBtn" aria-label="닫기">×</button></div>
+      <form id="categoryForm" class="modal-form" novalidate>
+        <input type="hidden" id="categoryEditId">
+        <div class="form-group"><label class="form-label" for="categoryNameInput">카테고리 이름</label><input class="form-input" id="categoryNameInput" maxlength="20" required><p class="form-error-msg" id="categoryNameError"></p></div>
+        <div class="form-group"><span class="form-label">아이콘</span><div class="icon-picker" id="iconPicker"></div></div>
+        <div class="form-group"><span class="form-label">색상</span><div class="color-picker" id="colorPicker"></div></div>
+        <div class="form-group category-preview-group"><span class="form-label">미리보기</span><div class="category-preview"><span id="categoryPreviewBadge"></span><div class="category-calendar-preview"><b>24</b><b>25</b><b>26</b><span id="categoryPreviewBar"></span></div></div></div>
+        <div class="category-delete-area" id="categoryDeleteArea" hidden><button type="button" class="btn btn-danger" id="deleteCategoryBtn">카테고리 삭제</button><small id="defaultCategoryNotice">기본 카테고리는 삭제할 수 없습니다.</small></div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelCategoryBtn">취소</button><button type="submit" class="btn btn-primary">저장</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="categoryManagementModal" role="dialog" aria-modal="true" aria-labelledby="categoryManagementTitle" hidden>
+    <div class="modal-card category-management-card"><div class="modal-header"><div><h3 class="modal-title" id="categoryManagementTitle">카테고리 관리</h3><p class="modal-subtitle">일정에 사용할 카테고리를 관리하세요.</p></div><button type="button" class="btn-close" id="closeCategoryManagementBtn" aria-label="닫기">×</button></div><div class="category-management-list" id="categoryManagementList"></div><button type="button" class="btn btn-secondary category-management-add" id="managementAddCategoryBtn">＋ 새 카테고리 추가</button></div>
+  </div>
+
+  <div class="modal-overlay" id="categoryMoveModal" role="dialog" aria-modal="true" aria-labelledby="categoryMoveTitle" hidden>
+    <div class="modal-card modal-card-sm"><div class="modal-header"><h3 class="modal-title" id="categoryMoveTitle">일정 이동 후 삭제</h3></div><div class="modal-body"><p id="categoryMoveMessage"></p><label class="form-label" for="categoryMoveSelect">이동할 카테고리</label><select class="form-input" id="categoryMoveSelect"></select></div><div class="modal-actions"><button class="btn btn-secondary" id="cancelCategoryMoveBtn">취소</button><button class="btn btn-danger" id="confirmCategoryMoveBtn">이동 후 삭제</button></div></div>
+  </div>
+
+  <!-- Event Detail Modal (When clicking event in Calendar) -->
+  <div class="modal-overlay" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailTitle" hidden>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <div class="detail-header-tags" id="detailHeaderTags">
+          <!-- Category & Status Badges -->
+        </div>
+        <button type="button" class="btn-close" id="closeDetailModalBtn" aria-label="상세 닫기">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <h3 class="detail-title" id="detailTitle">일정명</h3>
+        
+        <div class="detail-info-list">
+          <div class="detail-info-row">
+            <span class="detail-label">D-Day</span>
+            <span class="detail-dday-badge" id="detailDDayBadge">D-Day</span>
+          </div>
+          <div class="detail-info-row">
+            <span class="detail-label">일정 기간</span>
+            <span class="detail-value" id="detailDateRange">2026.08.24 ~ 2026.08.26</span>
+          </div>
+        </div>
+        <section class="checklist-section" aria-labelledby="checklistTitle">
+          <div class="checklist-heading"><div><h4 id="checklistTitle">Check list</h4><p id="checklistSecondary">Check list 항목을 추가해 보세요.</p></div><strong id="checklistCount">0 / 0</strong></div>
+          <div class="checklist-progress" id="checklistProgress" hidden><div><span id="checklistProgressBar"></span></div><b id="checklistPercentage">0%</b></div>
+          <p class="checklist-complete-message" id="checklistCompleteMessage" hidden>✓ 모든 Check list 항목이 완료되었습니다.</p>
+          <div class="checklist-list" id="checklistList"></div>
+          <div class="checklist-empty" id="checklistEmpty">등록된 Check list 항목이 없습니다.</div>
+          <div class="checklist-add-area">
+            <form class="checklist-add-form" id="checklistAddForm" hidden><label class="sr-only" for="checklistInput">Check list 항목</label><input id="checklistInput" maxlength="100" placeholder="Check list 항목을 입력하세요" autocomplete="off"><button type="submit">추가</button></form>
+            <button type="button" class="checklist-add-toggle" id="checklistAddToggle">＋ Check list 추가</button>
+          </div>
+          <p class="checklist-error" id="checklistError" role="alert"></p>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger" id="detailDeleteBtn">삭제</button>
+        <button type="button" class="btn btn-primary" id="detailEditBtn">수정</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div class="modal-overlay" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" hidden>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <div class="modal-icon-warning" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <h3 class="modal-title" id="deleteModalTitle">일정 삭제</h3>
+      </div>
+      <div class="modal-body">
+        <p class="delete-confirm-message" id="deleteConfirmMessage">
+          "<strong id="deleteTargetTitle"></strong>" 일정을 삭제하시겠습니까?
+        </p>
+        <p class="delete-subtext">삭제된 일정은 복구할 수 없습니다.</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">취소</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
