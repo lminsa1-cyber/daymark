@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='6' width='24' height='22' rx='5' fill='%231646D8'/%3E%3Cpath d='M10 3v6M22 3v6M4 12h24' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='m10 20 4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script>
     try {
-      const savedAppearance = JSON.parse(localStorage.getItem('dday-count-settings') || '{}');
+      const savedAppearance = JSON.parse(localStorage.getItem('daymark-v5-settings') || '{}');
       document.documentElement.dataset.fontFamily = ['system','pretendard','malgun','arial','georgia','gulim','batang'].includes(savedAppearance.fontFamily) ? savedAppearance.fontFamily : 'system';
       document.documentElement.dataset.fontSize = ['small','medium','large'].includes(savedAppearance.fontSize) ? savedAppearance.fontSize : 'medium';
     } catch (_) {

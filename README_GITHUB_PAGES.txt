@@ -14,3 +14,6 @@ Folder: / (root)
 Important:
 - This package keeps the existing localStorage keys used by the current DayMark site, so existing users on the same GitHub Pages origin can keep their saved schedules after the code update.
 - Do not change the repository name or Pages URL if you want users to continue using the same browser-stored data on the same origin.
+
+
+v1.1 fixed: restored v1.0 localStorage keys (daymark-v5-*) and added legacy dday-count-* migration fallback.

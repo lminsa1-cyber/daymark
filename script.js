@@ -10,11 +10,14 @@
   // ==========================================
   // Constants & Category Definitions
   // ==========================================
-  const STORAGE_KEY = 'dday-count-items';
-  const CATEGORY_STORAGE_KEY = 'dday-count-categories';
-  const SETTINGS_STORAGE_KEY = 'dday-count-settings';
+  const STORAGE_KEY = 'daymark-v5-items';
+  const CATEGORY_STORAGE_KEY = 'daymark-v5-categories';
+  const SETTINGS_STORAGE_KEY = 'daymark-v5-settings';
   const PRIVACY_PIN_STORAGE_KEY = 'daymark-hidden-pin-hash';
   const PRIVACY_SESSION_KEY = 'daymark-hidden-unlocked';
+  const LEGACY_STORAGE_KEY = 'dday-count-items';
+  const LEGACY_CATEGORY_STORAGE_KEY = 'dday-count-categories';
+  const LEGACY_SETTINGS_STORAGE_KEY = 'dday-count-settings';
   const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium' };
   const FONT_FAMILIES = {
     system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Arial, sans-serif',
@@ -26,6 +29,24 @@
     batang: '"Batang", "바탕", serif'
   };
   const FONT_SCALES = { small: 0.94, medium: 1, large: 1.1 };
+
+  function migrateLegacyStorageKeys() {
+    try {
+      if (!localStorage.getItem(STORAGE_KEY) && localStorage.getItem(LEGACY_STORAGE_KEY)) {
+        localStorage.setItem(STORAGE_KEY, localStorage.getItem(LEGACY_STORAGE_KEY));
+      }
+      if (!localStorage.getItem(CATEGORY_STORAGE_KEY) && localStorage.getItem(LEGACY_CATEGORY_STORAGE_KEY)) {
+        localStorage.setItem(CATEGORY_STORAGE_KEY, localStorage.getItem(LEGACY_CATEGORY_STORAGE_KEY));
+      }
+      if (!localStorage.getItem(SETTINGS_STORAGE_KEY) && localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY)) {
+        localStorage.setItem(SETTINGS_STORAGE_KEY, localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY));
+      }
+    } catch (error) {
+      console.warn('DayMark legacy storage migration skipped:', error);
+    }
+  }
+
+  migrateLegacyStorageKeys();
   const DEFAULT_CATEGORIES = [
     { id: 'work', name: '업무', icon: 'briefcase', color: '#4F46E5', isDefault: true },
     { id: 'company', name: '회사', icon: 'building', color: '#7C3AED', isDefault: true },
