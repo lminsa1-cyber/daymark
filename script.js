@@ -13,12 +13,17 @@
   const STORAGE_KEY = 'daymark-v5-items';
   const CATEGORY_STORAGE_KEY = 'daymark-v5-categories';
   const SETTINGS_STORAGE_KEY = 'daymark-v5-settings';
+  const MEMO_STORAGE_KEY = 'daymark-v5-memos';
   const PRIVACY_PIN_STORAGE_KEY = 'daymark-hidden-pin-hash';
   const PRIVACY_SESSION_KEY = 'daymark-hidden-unlocked';
+  const DATA_MANAGEMENT_HISTORY_KEY = 'daymark-data-management-history';
   const LEGACY_STORAGE_KEY = 'dday-count-items';
   const LEGACY_CATEGORY_STORAGE_KEY = 'dday-count-categories';
   const LEGACY_SETTINGS_STORAGE_KEY = 'dday-count-settings';
-  const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium' };
+  const APP_VERSION = 'v1.1';
+  const BACKUP_FORMAT_VERSION = '1.0';
+  const BACKUP_STORAGE_KEYS = [STORAGE_KEY, CATEGORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, MEMO_STORAGE_KEY, PRIVACY_PIN_STORAGE_KEY, LEGACY_STORAGE_KEY, LEGACY_CATEGORY_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY];
+  const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium', showLunarCalendar: false };
   const FONT_FAMILIES = {
     system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Arial, sans-serif',
     pretendard: 'Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif',
@@ -29,6 +34,9 @@
     batang: '"Batang", "바탕", serif'
   };
   const FONT_SCALES = { small: 0.94, medium: 1, large: 1.1 };
+  const REPEAT_LABELS = { weekly: '매주', monthly: '매월', yearly: '매년' };
+  const LUNAR_YEAR_MIN = 1900;
+  const LUNAR_YEAR_MAX = 2100;
 
   function migrateLegacyStorageKeys() {
     try {
@@ -63,12 +71,14 @@
   const now = new Date();
   const state = {
     items: [],
+    memos: [],
     categories: [],
     settings: { ...DEFAULT_SETTINGS },
-    currentView: 'dashboard', // 'dashboard' | 'calendar'
+    currentView: 'dashboard', // 'dashboard' | 'calendar' | 'memo'
     activeCategory: 'all',    // 'all' | 'work' | 'company' | 'personal' | 'other'
     activeStatus: 'all',      // 'all' | 'upcoming' | 'ongoing' | 'completed'
     searchQuery: '',
+    memoSearchQuery: '',
     sortBy: 'closest',        // 'closest' | 'farthest' | 'newest' | 'oldest'
     
     // Calendar Navigation State
@@ -77,6 +87,8 @@
     selectedCalendarDate: toIsoDateString(now),
 
     currentEditId: null,
+    currentMemoEditId: null,
+    currentMemoDeleteId: null,
     currentDeleteId: null,
     currentDetailId: null,
     currentCategoryEditId: null,
@@ -97,8 +109,28 @@
   // View Switch Elements
   const tabDashboardBtn = document.getElementById('tabDashboardBtn');
   const tabCalendarBtn = document.getElementById('tabCalendarBtn');
+  const tabMemoBtn = document.getElementById('tabMemoBtn');
   const dashboardView = document.getElementById('dashboardView');
   const calendarView = document.getElementById('calendarView');
+  const memoView = document.getElementById('memoView');
+  const memoList = document.getElementById('memoList');
+  const memoSearchInput = document.getElementById('memoSearchInput');
+  const clearMemoSearchBtn = document.getElementById('clearMemoSearchBtn');
+  const openMemoModalBtn = document.getElementById('openMemoModalBtn');
+  const memoModal = document.getElementById('memoModal');
+  const memoModalTitle = document.getElementById('memoModalTitle');
+  const memoForm = document.getElementById('memoForm');
+  const memoEditId = document.getElementById('memoEditId');
+  const memoTitleInput = document.getElementById('memoTitleInput');
+  const memoContentInput = document.getElementById('memoContentInput');
+  const memoLinkedEventSelect = document.getElementById('memoLinkedEventSelect');
+  const memoFormError = document.getElementById('memoFormError');
+  const closeMemoModalBtn = document.getElementById('closeMemoModalBtn');
+  const cancelMemoBtn = document.getElementById('cancelMemoBtn');
+  const memoDeleteModal = document.getElementById('memoDeleteModal');
+  const closeMemoDeleteBtn = document.getElementById('closeMemoDeleteBtn');
+  const cancelMemoDeleteBtn = document.getElementById('cancelMemoDeleteBtn');
+  const confirmMemoDeleteBtn = document.getElementById('confirmMemoDeleteBtn');
 
   // Calendar Elements
   const calTodayBtn = document.getElementById('calTodayBtn');
@@ -108,6 +140,7 @@
   const calCategoryIndicator = document.getElementById('calCategoryIndicator');
   const calendarGrid = document.getElementById('calendarGrid');
   const mobileCalendarAgenda = document.getElementById('mobileCalendarAgenda');
+  const lunarCalendarToggle = document.getElementById('lunarCalendarToggle');
 
   // Sidebar & Drawer Elements
   const sidebar = document.getElementById('sidebar');
@@ -127,7 +160,6 @@
   const sidebarNav = document.querySelector('.sidebar-nav');
   const mobileCategoryChips = document.getElementById('mobileCategoryChips');
   const categoryNavList = document.getElementById('categoryNavList');
-  const addCategoryBtn = document.getElementById('addCategoryBtn');
   const manageCategoryBtn = document.getElementById('manageCategoryBtn');
   const categoryRadioGroup = document.getElementById('categoryRadioGroup');
 
@@ -145,7 +177,23 @@
   const titleInput = document.getElementById('titleInput');
   const startDateInput = document.getElementById('startDateInput');
   const endDateInput = document.getElementById('endDateInput');
+  const solarDateFields = document.getElementById('solarDateFields');
+  const lunarDateFields = document.getElementById('lunarDateFields');
+  const lunarYearSelect = document.getElementById('lunarYearSelect');
+  const lunarYearField = document.getElementById('lunarYearField');
+  const lunarMonthSelect = document.getElementById('lunarMonthSelect');
+  const lunarDaySelect = document.getElementById('lunarDaySelect');
+  const lunarLeapCheckbox = document.getElementById('lunarLeapCheckbox');
+  const lunarDateError = document.getElementById('lunarDateError');
   const importantCheckbox = document.getElementById('importantCheckbox');
+  const repeatCheckbox = document.getElementById('repeatCheckbox');
+  const repeatTypeSelect = document.getElementById('repeatTypeSelect');
+  const solarRepeatFields = document.getElementById('solarRepeatFields');
+  const solarRepeatFieldLabel = document.getElementById('solarRepeatFieldLabel');
+  const repeatWeekdaySelect = document.getElementById('repeatWeekdaySelect');
+  const repeatMonthSelect = document.getElementById('repeatMonthSelect');
+  const repeatDaySelect = document.getElementById('repeatDaySelect');
+  const solarRepeatError = document.getElementById('solarRepeatError');
   const hiddenCheckbox = document.getElementById('hiddenCheckbox');
   const titleError = document.getElementById('titleError');
   const startDateError = document.getElementById('startDateError');
@@ -160,6 +208,12 @@
   const detailTitle = document.getElementById('detailTitle');
   const detailDDayBadge = document.getElementById('detailDDayBadge');
   const detailDateRange = document.getElementById('detailDateRange');
+  const detailLinkedMemosSection = document.getElementById('detailLinkedMemosSection');
+  const detailLinkedMemosList = document.getElementById('detailLinkedMemosList');
+  const detailRepeatRow = document.getElementById('detailRepeatRow');
+  const detailRepeatValue = document.getElementById('detailRepeatValue');
+  const detailLunarRow = document.getElementById('detailLunarRow');
+  const detailLunarValue = document.getElementById('detailLunarValue');
   const closeDetailModalBtn = document.getElementById('closeDetailModalBtn');
   const detailEditBtn = document.getElementById('detailEditBtn');
   const detailDeleteBtn = document.getElementById('detailDeleteBtn');
@@ -209,18 +263,23 @@
   const pinModal = document.getElementById('pinModal');
   const pinForm = document.getElementById('pinForm');
   const pinInput = document.getElementById('pinInput');
+  const pinInputLabel = document.getElementById('pinInputLabel');
   const pinError = document.getElementById('pinError');
   const pinModalTitle = document.getElementById('pinModalTitle');
   const pinModalSubtitle = document.getElementById('pinModalSubtitle');
   const closePinModalBtn = document.getElementById('closePinModalBtn');
   const cancelPinBtn = document.getElementById('cancelPinBtn');
+  const confirmPinBtn = document.getElementById('confirmPinBtn');
   const pinConfirmInput = document.getElementById('pinConfirmInput');
   const pinConfirmGroup = document.getElementById('pinConfirmGroup');
   const pinLostNotice = document.getElementById('pinLostNotice');
   const hiddenItemsModal = document.getElementById('hiddenItemsModal');
   const hiddenItemsList = document.getElementById('hiddenItemsList');
   const closeHiddenItemsBtn = document.getElementById('closeHiddenItemsBtn');
-  const changeHiddenPinBtn = document.getElementById('changeHiddenPinBtn');
+  const pinRequiredModal = document.getElementById('pinRequiredModal');
+  const closePinRequiredBtn = document.getElementById('closePinRequiredBtn');
+  const cancelPinRequiredBtn = document.getElementById('cancelPinRequiredBtn');
+  const openPinSettingsBtn = document.getElementById('openPinSettingsBtn');
   const changePinModal = document.getElementById('changePinModal');
   const changePinForm = document.getElementById('changePinForm');
   const oldPinInput = document.getElementById('oldPinInput');
@@ -245,6 +304,36 @@
   const resetSettingsBtn = document.getElementById('resetSettingsBtn');
   const fontFamilySelect = document.getElementById('fontFamilySelect');
   const settingsPreview = document.getElementById('settingsPreview');
+  const settingsSecuritySection = document.getElementById('settingsSecuritySection');
+  const settingsPinStatus = document.getElementById('settingsPinStatus');
+  const managePinBtn = document.getElementById('managePinBtn');
+  const resetPinBtn = document.getElementById('resetPinBtn');
+  const resetPinModal = document.getElementById('resetPinModal');
+  const resetPinForm = document.getElementById('resetPinForm');
+  const resetCurrentPinInput = document.getElementById('resetCurrentPinInput');
+  const resetPinError = document.getElementById('resetPinError');
+  const closeResetPinBtn = document.getElementById('closeResetPinBtn');
+  const cancelResetPinBtn = document.getElementById('cancelResetPinBtn');
+  const confirmResetPinModal = document.getElementById('confirmResetPinModal');
+  const closeConfirmResetPinBtn = document.getElementById('closeConfirmResetPinBtn');
+  const cancelConfirmResetPinBtn = document.getElementById('cancelConfirmResetPinBtn');
+  const confirmResetPinBtn = document.getElementById('confirmResetPinBtn');
+  const backupDataBtn = document.getElementById('backupDataBtn');
+  const restoreDataBtn = document.getElementById('restoreDataBtn');
+  const restoreFileInput = document.getElementById('restoreFileInput');
+  const restoreConfirmModal = document.getElementById('restoreConfirmModal');
+  const closeRestoreConfirmBtn = document.getElementById('closeRestoreConfirmBtn');
+  const cancelRestoreBtn = document.getElementById('cancelRestoreBtn');
+  const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+  const restoreCreatedAt = document.getElementById('restoreCreatedAt');
+  const restoreItemCount = document.getElementById('restoreItemCount');
+  const restoreCategoryCount = document.getElementById('restoreCategoryCount');
+  const restoreAppVersion = document.getElementById('restoreAppVersion');
+  const restoreFormatVersion = document.getElementById('restoreFormatVersion');
+  const lastBackupAt = document.getElementById('lastBackupAt');
+  const lastRestoreAt = document.getElementById('lastRestoreAt');
+  const restoredBackupAt = document.getElementById('restoredBackupAt');
+  let pendingRestoreBackup = null;
 
   // ==========================================
   // Date Utilities
@@ -299,6 +388,79 @@
     const dd = String(d.getDate()).padStart(2, '0');
     const dayName = days[d.getDay()];
     return `${yyyy}.${mm}.${dd} (${dayName})`;
+  }
+
+  let lunarDateFormatter = null;
+  try {
+    lunarDateFormatter = new Intl.DateTimeFormat('ko-KR-u-ca-chinese', {
+      year: 'numeric', month: 'numeric', day: 'numeric'
+    });
+  } catch (error) {
+    console.warn('이 브라우저에서는 음력 표시를 지원하지 않습니다.', error);
+  }
+
+  function getLunarDateInfo(dateVal) {
+    if (!lunarDateFormatter) return null;
+    try {
+      const date = typeof dateVal === 'string' ? parseLocalDate(dateVal) : dateVal;
+      const parts = lunarDateFormatter.formatToParts(date);
+      const getPart = type => parts.find(part => part.type === type)?.value || '';
+      const monthText = getPart('month');
+      const month = Number((monthText.match(/\d+/) || [0])[0]);
+      const day = Number(getPart('day'));
+      const year = Number(getPart('relatedYear') || getPart('year'));
+      if (!month || !day) return null;
+      return { year, month, day, isLeapMonth: /윤|leap|bis/i.test(monthText) };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function formatLunarCompact(dateVal) {
+    const lunar = getLunarDateInfo(dateVal);
+    if (!lunar) return '';
+    return `${lunar.isLeapMonth ? '윤' : '음 '}${lunar.month}.${lunar.day}`;
+  }
+
+  function formatLunarFull(dateVal) {
+    const lunar = getLunarDateInfo(dateVal);
+    if (!lunar) return '';
+    return `음력 ${lunar.year}년 ${lunar.isLeapMonth ? '윤' : ''}${lunar.month}월 ${lunar.day}일`;
+  }
+
+  const lunarToSolarCache = new Map();
+  function lunarToSolar(year, month, day, isLeapMonth = false) {
+    const key = `${year}-${month}-${day}-${isLeapMonth ? 1 : 0}`;
+    if (lunarToSolarCache.has(key)) return lunarToSolarCache.get(key);
+    const start = new Date(year, 0, 1);
+    const end = new Date(year + 1, 2, 1);
+    for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) {
+      const lunar = getLunarDateInfo(cursor);
+      if (lunar && lunar.year === year && lunar.month === month && lunar.day === day && lunar.isLeapMonth === isLeapMonth) {
+        const result = toIsoDateString(cursor);
+        lunarToSolarCache.set(key, result);
+        return result;
+      }
+    }
+    lunarToSolarCache.set(key, null);
+    return null;
+  }
+
+  function normalizeLunar(lunar) {
+    if (!lunar) return null;
+    const year = Number(lunar.year), month = Number(lunar.month), day = Number(lunar.day);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 30) return null;
+    return { year, month, day, isLeapMonth: Boolean(lunar.isLeapMonth) };
+  }
+
+  function isLunarItem(item) {
+    return item.calendarType === 'lunar' && Boolean(normalizeLunar(item.lunar));
+  }
+
+  function formatLunarOriginal(item, year = null) {
+    const lunar = normalizeLunar(item.lunar);
+    if (!lunar) return '';
+    return `${year || lunar.year}년 ${lunar.isLeapMonth ? '윤' : ''}${lunar.month}월 ${lunar.day}일`;
   }
 
   /**
@@ -392,6 +554,153 @@
     }
   }
 
+  function normalizeRepeat(repeat) {
+    const enabled = Boolean(repeat && repeat.enabled && REPEAT_LABELS[repeat.type]);
+    const normalized = { enabled, type: enabled ? repeat.type : null };
+    if (enabled && Number.isInteger(Number(repeat.repeatWeekday)) && Number(repeat.repeatWeekday) >= 0 && Number(repeat.repeatWeekday) <= 6) normalized.repeatWeekday = Number(repeat.repeatWeekday);
+    if (enabled && Number.isInteger(Number(repeat.repeatDay)) && Number(repeat.repeatDay) >= 1 && Number(repeat.repeatDay) <= 31) normalized.repeatDay = Number(repeat.repeatDay);
+    if (enabled && Number.isInteger(Number(repeat.repeatMonth)) && Number(repeat.repeatMonth) >= 1 && Number(repeat.repeatMonth) <= 12) normalized.repeatMonth = Number(repeat.repeatMonth);
+    return normalized;
+  }
+
+  function getRepeatRule(item) {
+    const repeat = normalizeRepeat(item.repeat);
+    const base = parseLocalDate(item.startDate);
+    return { ...repeat, repeatWeekday: repeat.repeatWeekday ?? base.getDay(), repeatDay: repeat.repeatDay ?? base.getDate(), repeatMonth: repeat.repeatMonth ?? (base.getMonth() + 1) };
+  }
+
+  function addDays(date, days) {
+    const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+
+  function getDurationDays(item) {
+    const start = parseLocalDate(item.startDate);
+    const end = parseLocalDate(item.endDate || item.startDate);
+    return Math.max(0, Math.round((end - start) / 86400000));
+  }
+
+  function monthlyOccurrence(year, month, baseDay) {
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(baseDay, lastDay));
+  }
+
+  function yearlyOccurrence(year, baseMonth, baseDay) {
+    return monthlyOccurrence(year, baseMonth, baseDay);
+  }
+
+  function makeOccurrence(item, startDate) {
+    const endDate = addDays(startDate, getDurationDays(item));
+    return { startDate: toIsoDateString(startDate), endDate: toIsoDateString(endDate) };
+  }
+
+  function getEffectiveOccurrence(item, referenceDate = getTodayMidnight()) {
+    const repeat = getRepeatRule(item);
+    if (isLunarItem(item)) {
+      if (!repeat.enabled) return { startDate: item.startDate, endDate: item.startDate };
+      const lunar = normalizeLunar(item.lunar);
+      const currentLunarYear = getLunarDateInfo(referenceDate)?.year || referenceDate.getFullYear();
+      for (let year = currentLunarYear; year <= Math.min(LUNAR_YEAR_MAX, currentLunarYear + 30); year += 1) {
+        const solarDate = lunarToSolar(year, lunar.month, lunar.day, lunar.isLeapMonth);
+        if (solarDate && solarDate >= toIsoDateString(referenceDate)) return { startDate: solarDate, endDate: solarDate, lunarYear: year };
+      }
+      return { startDate: item.startDate, endDate: item.startDate };
+    }
+    if (!repeat.enabled) return { startDate: item.startDate, endDate: item.endDate || item.startDate };
+
+    const base = parseLocalDate(item.startDate);
+    const threshold = addDays(referenceDate, -getDurationDays(item));
+    let candidate = base;
+
+    if (repeat.type === 'weekly') {
+      candidate = addDays(threshold, (repeat.repeatWeekday - threshold.getDay() + 7) % 7);
+      if (candidate < base) candidate = addDays(candidate, 7);
+      while (addDays(candidate, getDurationDays(item)) < referenceDate) candidate = addDays(candidate, 7);
+    } else if (repeat.type === 'monthly') {
+      let year = threshold.getFullYear();
+      let month = threshold.getMonth();
+      candidate = monthlyOccurrence(year, month, repeat.repeatDay);
+      while (candidate < base || addDays(candidate, getDurationDays(item)) < referenceDate) {
+        month += 1;
+        candidate = monthlyOccurrence(year, month, repeat.repeatDay);
+        year = candidate.getFullYear();
+        month = candidate.getMonth();
+      }
+    } else {
+      let year = Math.max(base.getFullYear(), threshold.getFullYear());
+      candidate = yearlyOccurrence(year, repeat.repeatMonth - 1, repeat.repeatDay);
+      while (candidate < base || addDays(candidate, getDurationDays(item)) < referenceDate) {
+        year += 1;
+        candidate = yearlyOccurrence(year, repeat.repeatMonth - 1, repeat.repeatDay);
+      }
+    }
+    return makeOccurrence(item, candidate);
+  }
+
+  function getOccurrencesInRange(item, rangeStartStr, rangeEndStr) {
+    const repeat = getRepeatRule(item);
+    const originalEnd = item.endDate || item.startDate;
+    if (isLunarItem(item) && repeat.enabled) {
+      const lunar = normalizeLunar(item.lunar);
+      const occurrences = [];
+      const startYear = Math.max(LUNAR_YEAR_MIN, parseLocalDate(rangeStartStr).getFullYear() - 1);
+      const endYear = Math.min(LUNAR_YEAR_MAX, parseLocalDate(rangeEndStr).getFullYear() + 1);
+      for (let year = startYear; year <= endYear; year += 1) {
+        const solarDate = lunarToSolar(year, lunar.month, lunar.day, lunar.isLeapMonth);
+        if (solarDate && solarDate >= rangeStartStr && solarDate <= rangeEndStr) occurrences.push({ ...item, startDate: solarDate, endDate: solarDate, occurrenceLunarYear: year });
+      }
+      return occurrences;
+    }
+    if (!repeat.enabled) {
+      return item.startDate <= rangeEndStr && originalEnd >= rangeStartStr ? [{ ...item }] : [];
+    }
+
+    const rangeStart = parseLocalDate(rangeStartStr);
+    const rangeEnd = parseLocalDate(rangeEndStr);
+    const threshold = addDays(rangeStart, -getDurationDays(item));
+    const base = parseLocalDate(item.startDate);
+    const occurrences = [];
+    const addOccurrence = start => {
+      if (start < base) return;
+      const occurrence = makeOccurrence(item, start);
+      if (occurrence.startDate <= rangeEndStr && occurrence.endDate >= rangeStartStr) {
+        occurrences.push({ ...item, startDate: occurrence.startDate, endDate: occurrence.endDate });
+      }
+    };
+
+    if (repeat.type === 'weekly') {
+      let start = addDays(threshold, (repeat.repeatWeekday - threshold.getDay() + 7) % 7);
+      while (start < base) start = addDays(start, 7);
+      for (; start <= rangeEnd; start = addDays(start, 7)) addOccurrence(start);
+    } else if (repeat.type === 'monthly') {
+      let cursor = new Date(threshold.getFullYear(), threshold.getMonth(), 1);
+      while (cursor <= rangeEnd) {
+        addOccurrence(monthlyOccurrence(cursor.getFullYear(), cursor.getMonth(), repeat.repeatDay));
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      }
+    } else {
+      for (let year = Math.max(base.getFullYear(), threshold.getFullYear()); year <= rangeEnd.getFullYear(); year += 1) {
+        addOccurrence(yearlyOccurrence(year, repeat.repeatMonth - 1, repeat.repeatDay));
+      }
+    }
+    return occurrences;
+  }
+
+  function getRepeatLabel(item) {
+    const repeat = normalizeRepeat(item.repeat);
+    return repeat.enabled ? REPEAT_LABELS[repeat.type] : '';
+  }
+
+  function getDetailedRepeatLabel(item) {
+    const repeat = getRepeatRule(item);
+    if (!repeat.enabled) return '';
+    if (isLunarItem(item)) return `매년 · 음력 ${item.lunar.month}월 ${item.lunar.day}일${item.lunar.isLeapMonth ? ' (윤달)' : ''}`;
+    if (repeat.type === 'weekly') return `매주 · ${['일요일','월요일','화요일','수요일','목요일','금요일','토요일'][repeat.repeatWeekday]}`;
+    if (repeat.type === 'monthly') return `매월 · ${repeat.repeatDay}일`;
+    return `매년 · ${repeat.repeatMonth}월 ${repeat.repeatDay}일`;
+  }
+
   // ==========================================
   // Storage & Data Migration
   // ==========================================
@@ -436,11 +745,13 @@
     return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
-  function closePinModal() { pinModal.hidden=true; pinInput.value=''; pinConfirmInput.value=''; pinError.textContent=''; state.pendingPrivacyAction=null; document.body.style.overflow=formModal.hidden?'':'hidden'; }
+  function closePinModal() { pinModal.hidden=true; pinInput.value=''; pinConfirmInput.value=''; pinError.textContent=''; state.pendingPrivacyAction=null; document.body.style.overflow=(formModal.hidden&&settingsModal.hidden)?'':'hidden'; }
   function requestPin(action, createMode = false) {
     state.pendingPrivacyAction = { action, createMode };
     pinModalTitle.textContent = createMode ? 'PIN 설정' : '숨김 일정';
     pinModalSubtitle.textContent = createMode ? '숨김 일정을 보호할 4자리 PIN을 설정하세요.' : '보호된 일정입니다. 4자리 PIN을 입력하세요.';
+    pinInputLabel.textContent = createMode ? '새 PIN' : 'PIN';
+    confirmPinBtn.textContent = createMode ? '설정' : '확인';
     pinConfirmGroup.hidden=!createMode; pinLostNotice.hidden=!createMode; pinInput.value=''; pinConfirmInput.value=''; pinError.textContent=''; pinModal.hidden=false; document.body.style.overflow='hidden';
     setTimeout(() => pinInput.focus(), 50);
   }
@@ -459,10 +770,17 @@
     sessionStorage.setItem(PRIVACY_SESSION_KEY, 'true');
     const action = pending.action;
     pinModal.hidden = true; pinInput.value = ''; pinError.textContent = ''; state.pendingPrivacyAction = null; document.body.style.overflow = '';
+    if (pending.createMode) showToast('PIN이 설정되었습니다.');
     if (typeof action === 'function') action();
   }
 
-  function requestHiddenAccess(action) { if (isHiddenUnlocked()) action(); else requestPin(action, !localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)); }
+  function showPinRequired() { pinRequiredModal.hidden = false; document.body.style.overflow = 'hidden'; setTimeout(() => openPinSettingsBtn.focus(), 50); }
+  function closePinRequired() { pinRequiredModal.hidden = true; document.body.style.overflow = formModal.hidden ? '' : 'hidden'; }
+  function requestHiddenAccess(action) {
+    if (isHiddenUnlocked()) action();
+    else if (localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)) requestPin(action);
+    else showPinRequired();
+  }
 
   function getUrgencyState(startDate, endDate) {
     const status = getScheduleStatus(startDate, endDate);
@@ -502,6 +820,9 @@
               category: (item.category && CATEGORIES[item.category]) ? item.category : 'other',
               important: Boolean(item.important),
               hidden: Boolean(item.hidden),
+              calendarType: item.calendarType === 'lunar' && normalizeLunar(item.lunar) ? 'lunar' : 'solar',
+              lunar: item.calendarType === 'lunar' ? normalizeLunar(item.lunar) : null,
+              repeat: normalizeRepeat(item.repeat),
               checklist: Array.isArray(item.checklist) ? item.checklist.filter(check => check && check.id && typeof check.text === 'string' && check.text.trim()).map(check => ({ id:String(check.id), text:String(check.text).trim().slice(0,100), completed:Boolean(check.completed) })) : [],
               createdAt: item.createdAt || new Date().toISOString()
             };
@@ -533,7 +854,8 @@
       const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
       return {
         fontFamily: Object.hasOwn(FONT_FAMILIES, saved.fontFamily) ? saved.fontFamily : DEFAULT_SETTINGS.fontFamily,
-        fontSize: Object.hasOwn(FONT_SCALES, saved.fontSize) ? saved.fontSize : DEFAULT_SETTINGS.fontSize
+        fontSize: Object.hasOwn(FONT_SCALES, saved.fontSize) ? saved.fontSize : DEFAULT_SETTINGS.fontSize,
+        showLunarCalendar: saved.showLunarCalendar === true
       };
     } catch (error) {
       console.warn('설정 데이터를 불러오지 못했습니다. 기본값을 사용합니다.', error);
@@ -544,6 +866,7 @@
   function applySettings(settings) {
     document.documentElement.dataset.fontFamily = settings.fontFamily;
     document.documentElement.dataset.fontSize = settings.fontSize;
+    if (lunarCalendarToggle) lunarCalendarToggle.checked = settings.showLunarCalendar === true;
   }
 
   function saveSettings(settings) {
@@ -556,7 +879,8 @@
     const selectedSize = settingsForm.querySelector('input[name="fontSize"]:checked');
     return {
       fontFamily: Object.hasOwn(FONT_FAMILIES, fontFamilySelect.value) ? fontFamilySelect.value : 'system',
-      fontSize: selectedSize && Object.hasOwn(FONT_SCALES, selectedSize.value) ? selectedSize.value : 'medium'
+      fontSize: selectedSize && Object.hasOwn(FONT_SCALES, selectedSize.value) ? selectedSize.value : 'medium',
+      showLunarCalendar: state.settings.showLunarCalendar === true
     };
   }
 
@@ -573,17 +897,213 @@
     updateSettingsPreview();
   }
 
-  function openSettings() {
+  function updatePinSettingsUI() {
+    const hasPin = Boolean(localStorage.getItem(PRIVACY_PIN_STORAGE_KEY));
+    settingsPinStatus.innerHTML = hasPin ? 'PIN이 설정되어 있습니다.' : 'PIN이 설정되어 있지 않습니다.<br>숨긴 일정을 보호하려면 4자리 PIN을 설정해 주세요.';
+    managePinBtn.textContent = hasPin ? 'PIN 변경' : 'PIN 설정';
+    resetPinBtn.hidden = !hasPin;
+  }
+
+  function openSettings(focusSecurity = false) {
     setSettingsFormValues(state.settings);
+    updatePinSettingsUI();
+    updateDataManagementHistoryUI();
     closeDrawer();
     settingsModal.hidden = false;
     document.body.style.overflow = 'hidden';
-    setTimeout(() => fontFamilySelect.focus(), 50);
+    setTimeout(() => {
+      if (focusSecurity === true) { settingsSecuritySection.scrollIntoView({ block:'center' }); settingsSecuritySection.focus(); }
+      else fontFamilySelect.focus();
+    }, 50);
   }
 
   function closeSettings() {
     settingsModal.hidden = true;
     document.body.style.overflow = '';
+  }
+
+  function getBackupTimestamp(date = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}`;
+  }
+
+  function loadDataManagementHistory() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DATA_MANAGEMENT_HISTORY_KEY) || '{}');
+      return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    } catch (error) {
+      console.warn('데이터 관리 이력을 불러오지 못했습니다.', error);
+      return {};
+    }
+  }
+
+  function saveDataManagementHistory(changes) {
+    try {
+      const history = { ...loadDataManagementHistory(), ...changes };
+      localStorage.setItem(DATA_MANAGEMENT_HISTORY_KEY, JSON.stringify(history));
+      updateDataManagementHistoryUI(history);
+      return true;
+    } catch (error) {
+      console.warn('데이터 관리 이력을 저장하지 못했습니다.', error);
+      return false;
+    }
+  }
+
+  function formatDataManagementDate(isoString) {
+    if (!isoString || Number.isNaN(Date.parse(isoString))) return '—';
+    const date = new Date(isoString);
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function updateDataManagementHistoryUI(history = loadDataManagementHistory()) {
+    lastBackupAt.textContent = formatDataManagementDate(history.lastBackupAt);
+    lastRestoreAt.textContent = formatDataManagementDate(history.lastRestoreAt);
+    restoredBackupAt.textContent = formatDataManagementDate(history.restoredBackupAt);
+  }
+
+  function createBackupPayload() {
+    const storage = {};
+    BACKUP_STORAGE_KEYS.forEach(key => { storage[key] = localStorage.getItem(key); });
+    return { app:'DayMark', backupFormatVersion:BACKUP_FORMAT_VERSION, createdAt:new Date().toISOString(), appVersion:APP_VERSION, data:{ storage } };
+  }
+
+  function downloadBackupFile(payload, filename) {
+    let objectUrl = '';
+    try {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json;charset=utf-8' });
+      objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl; link.download = filename; link.style.display = 'none';
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      return true;
+    } catch (error) {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      console.error('DayMark backup download failed:', error);
+      return false;
+    }
+  }
+
+  function backupCurrentData(prefix = 'DayMark_Backup') {
+    const payload = createBackupPayload();
+    const filename = `${prefix}_${getBackupTimestamp()}.json`;
+    return downloadBackupFile(payload, filename);
+  }
+
+  function validateBackupPayload(payload) {
+    if (!payload || payload.app !== 'DayMark' || !payload.backupFormatVersion || !payload.data || typeof payload.data !== 'object') throw new Error('NOT_DAYMARK');
+    if (payload.backupFormatVersion !== BACKUP_FORMAT_VERSION) throw new Error('UNSUPPORTED_VERSION');
+    if (!payload.data.storage || typeof payload.data.storage !== 'object') throw new Error('NOT_DAYMARK');
+    const storage = payload.data.storage;
+    if (typeof storage[STORAGE_KEY] !== 'string' || typeof storage[CATEGORY_STORAGE_KEY] !== 'string' || (storage[SETTINGS_STORAGE_KEY] !== null && typeof storage[SETTINGS_STORAGE_KEY] !== 'string')) throw new Error('NOT_DAYMARK');
+    let items, categories, settings, memos;
+    try {
+      items = JSON.parse(storage[STORAGE_KEY]);
+      categories = JSON.parse(storage[CATEGORY_STORAGE_KEY]);
+      settings = storage[SETTINGS_STORAGE_KEY] === null ? { ...DEFAULT_SETTINGS } : JSON.parse(storage[SETTINGS_STORAGE_KEY]);
+      const memoStorage = Object.hasOwn(storage, MEMO_STORAGE_KEY) ? storage[MEMO_STORAGE_KEY] : null;
+      if (memoStorage !== null && typeof memoStorage !== 'string') throw new Error('INVALID_MEMOS');
+      memos = memoStorage === null ? [] : JSON.parse(memoStorage);
+    } catch (_) { throw new Error('NOT_DAYMARK'); }
+    if (!Array.isArray(items) || !Array.isArray(categories) || !settings || typeof settings !== 'object' || Array.isArray(settings) || !Array.isArray(memos)) throw new Error('NOT_DAYMARK');
+    if (typeof payload.appVersion !== 'string') throw new Error('NOT_DAYMARK');
+    const eventIds = new Set(items.filter(item => item && item.id && item.title && (item.startDate || item.targetDate)).map(item => String(item.id)));
+    const restoredMemos = memos.map(memo => {
+      if (!memo || typeof memo !== 'object' || Array.isArray(memo)) return memo;
+      const linkedEventId = typeof memo.linkedEventId === 'string' && memo.linkedEventId ? memo.linkedEventId : null;
+      return { ...memo, linkedEventId: linkedEventId && eventIds.has(linkedEventId) ? linkedEventId : null };
+    });
+    storage[MEMO_STORAGE_KEY] = JSON.stringify(restoredMemos);
+    return { payload, items, categories };
+  }
+
+  function formatRestoreDate(isoString) {
+    if (!isoString || Number.isNaN(Date.parse(isoString))) return '—';
+    const date = new Date(isoString);
+    return new Intl.DateTimeFormat('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(date);
+  }
+
+  function openRestoreConfirmation(validated) {
+    pendingRestoreBackup = validated.payload;
+    restoreCreatedAt.textContent = formatRestoreDate(validated.payload.createdAt);
+    restoreItemCount.textContent = `${validated.items.length}개`;
+    restoreCategoryCount.textContent = `${validated.categories.length}개`;
+    restoreAppVersion.textContent = validated.payload.appVersion;
+    restoreFormatVersion.textContent = validated.payload.backupFormatVersion;
+    restoreConfirmModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => confirmRestoreBtn.focus(), 50);
+  }
+
+  function closeRestoreConfirmation() {
+    restoreConfirmModal.hidden = true;
+    pendingRestoreBackup = null;
+    document.body.style.overflow = settingsModal.hidden ? '' : 'hidden';
+  }
+
+  async function handleRestoreFile(file) {
+    if (!file) return;
+    try {
+      let text;
+      try { text = await file.text(); } catch (_) { throw new Error('UNREADABLE'); }
+      let payload;
+      try { payload = JSON.parse(text); } catch (_) { throw new Error('UNREADABLE'); }
+      openRestoreConfirmation(validateBackupPayload(payload));
+    } catch (error) {
+      if (error.message === 'UNREADABLE') showToast('백업 파일을 읽을 수 없습니다.');
+      else if (error.message === 'UNSUPPORTED_VERSION') showToast('지원하지 않는 백업 형식입니다.');
+      else showToast('DayMark 백업 파일이 아닙니다.');
+    } finally { restoreFileInput.value = ''; }
+  }
+
+  function restorePendingBackup() {
+    if (!pendingRestoreBackup) return;
+    if (!backupCurrentData('DayMark_AutoBackup_BeforeRestore')) {
+      showToast('현재 데이터의 안전 백업을 만들지 못해 복원을 중단했습니다.');
+      return;
+    }
+    const beforeRestore = {};
+    const restoredBackupCreatedAt = !pendingRestoreBackup.createdAt || Number.isNaN(Date.parse(pendingRestoreBackup.createdAt)) ? null : pendingRestoreBackup.createdAt;
+    BACKUP_STORAGE_KEYS.forEach(key => { beforeRestore[key] = localStorage.getItem(key); });
+    try {
+      const storage = pendingRestoreBackup.data.storage;
+      BACKUP_STORAGE_KEYS.forEach(key => {
+        const value = Object.hasOwn(storage, key) ? storage[key] : null;
+        if (value === null || value === undefined) localStorage.removeItem(key);
+        else if (typeof value === 'string') localStorage.setItem(key, value);
+        else throw new Error(`Invalid storage value: ${key}`);
+      });
+      sessionStorage.removeItem(PRIVACY_SESSION_KEY);
+      restoreConfirmModal.hidden = true;
+      pendingRestoreBackup = null;
+      state.settings = loadSettings();
+      applySettings(state.settings);
+      state.categories = loadCategories();
+      syncCategoryMap();
+      state.items = loadDDays();
+      state.memos = loadMemos();
+      state.activeCategory = 'all';
+      updatePinSettingsUI();
+      closeSettings();
+      renderApp();
+      saveDataManagementHistory({ lastRestoreAt:new Date().toISOString(), restoredBackupAt:restoredBackupCreatedAt });
+      showToast('데이터 복원이 완료되었습니다.');
+    } catch (error) {
+      BACKUP_STORAGE_KEYS.forEach(key => {
+        const value = beforeRestore[key];
+        if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
+      });
+      state.settings = loadSettings();
+      applySettings(state.settings);
+      state.categories = loadCategories();
+      syncCategoryMap();
+      state.items = loadDDays();
+      state.memos = loadMemos();
+      renderApp();
+      console.error('DayMark restore failed:', error);
+      showToast('데이터 복원 중 오류가 발생해 기존 데이터를 유지했습니다.');
+    }
   }
 
   /**
@@ -610,8 +1130,11 @@
    */
   function updateCategoryCounts() {
     const visibleItems=state.items.filter(item=>!item.hidden);
-    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체 일정</span></span><span class="nav-count-badge">${visibleItems.length}</span></button></li>` + state.categories.map(cat => {
-      const count = visibleItems.filter(item => item.category === cat.id).length;
+    const isMemoView = state.currentView === 'memo';
+    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체</span></span><span class="nav-count-badge">${isMemoView ? state.memos.length : visibleItems.length}</span></button></li>` + state.categories.map(cat => {
+      const count = isMemoView
+        ? state.memos.filter(memo => getMemoLinkedItem(memo)?.category === cat.id).length
+        : visibleItems.filter(item => item.category === cat.id).length;
       return `<li class="nav-item category-nav-item"><button type="button" class="nav-link" data-category="${cat.id}"><span class="nav-icon-text"><span class="nav-icon" style="color:${cat.color}">${getIconSvg(cat.icon)}</span><span>${escapeHtml(cat.name)}</span></span><span class="nav-count-badge">${count}</span></button><button class="category-edit-btn" data-edit-category="${cat.id}" aria-label="${escapeHtml(cat.name)} 카테고리 수정">⋮</button></li>`;
     }).join('');
     mobileCategoryChips.innerHTML = `<button type="button" class="category-chip" data-category="all">전체</button>` + state.categories.map(cat => `<button type="button" class="category-chip" data-category="${cat.id}" style="--category-color:${cat.color}">${getIconSvg(cat.icon,14)} ${escapeHtml(cat.name)}</button>`).join('');
@@ -626,8 +1149,8 @@
    */
   function sortItems(items, sortBy) {
     return [...items].sort((a, b) => {
-      const calcA = calculateDDay(a.startDate);
-      const calcB = calculateDDay(b.startDate);
+      const calcA = calculateDDay(getEffectiveOccurrence(a).startDate);
+      const calcB = calculateDDay(getEffectiveOccurrence(b).startDate);
 
       if (sortBy === 'closest') {
         // 1. Today, 2. Future ascending (closest first), 3. Past descending (recent past first)
@@ -676,7 +1199,10 @@
 
     // 2. Filter by status: 'all' | 'upcoming' | 'ongoing' | 'completed'
     if (state.activeStatus !== 'all') {
-      result = result.filter(item => getScheduleStatus(item.startDate, item.endDate) === state.activeStatus);
+      result = result.filter(item => {
+        const occurrence = getEffectiveOccurrence(item);
+        return getScheduleStatus(occurrence.startDate, occurrence.endDate) === state.activeStatus;
+      });
     }
 
     // 3. Filter by search query
@@ -700,20 +1226,20 @@
   function getRepresentativeDDay(items) {
     if (!items || items.length === 0) return null;
 
-    const todayAndFuture = items.filter(item => calculateDDay(item.startDate).diffDays >= 0);
+    const todayAndFuture = items.filter(item => calculateDDay(getEffectiveOccurrence(item).startDate).diffDays >= 0);
 
     if (todayAndFuture.length > 0) {
       return todayAndFuture.reduce((closest, curr) => {
-        const diffClosest = calculateDDay(closest.startDate).diffDays;
-        const diffCurr = calculateDDay(curr.startDate).diffDays;
+        const diffClosest = calculateDDay(getEffectiveOccurrence(closest).startDate).diffDays;
+        const diffCurr = calculateDDay(getEffectiveOccurrence(curr).startDate).diffDays;
         return diffCurr < diffClosest ? curr : closest;
       });
     }
 
     // Only past items exist: find the most recent past item (max diffDays, closest to 0)
     return items.reduce((mostRecent, curr) => {
-      const diffMostRecent = calculateDDay(mostRecent.startDate).diffDays;
-      const diffCurr = calculateDDay(curr.startDate).diffDays;
+      const diffMostRecent = calculateDDay(getEffectiveOccurrence(mostRecent).startDate).diffDays;
+      const diffCurr = calculateDDay(getEffectiveOccurrence(curr).startDate).diffDays;
       return diffCurr > diffMostRecent ? curr : mostRecent;
     });
   }
@@ -750,14 +1276,14 @@
               <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
           </div>
-          <h3 class="empty-title">아직 등록된 D-Day가 없습니다.</h3>
-          <p class="empty-description">중요한 일정이나 기념일을 추가하고 남은 시간을 확인해보세요.</p>
+          <h3 class="empty-title">아직 등록된 일정이 없습니다.</h3>
+          <p class="empty-description">중요한 일정이나 기념일을 등록하고 한눈에 관리해 보세요.</p>
           <button type="button" class="btn btn-primary btn-add" id="emptyHeroAddBtn">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            <span>D-Day 추가하기</span>
+            <span>새 일정 추가</span>
           </button>
         </div>
       `;
@@ -769,10 +1295,11 @@
       return;
     }
 
-    const calc = calculateDDay(repItem.startDate);
-    const scheduleStatus = getScheduleStatus(repItem.startDate, repItem.endDate);
+    const occurrence = getEffectiveOccurrence(repItem);
+    const calc = calculateDDay(occurrence.startDate);
+    const scheduleStatus = getScheduleStatus(occurrence.startDate, occurrence.endDate);
     const categoryInfo = getCategoryById(repItem.category);
-    const urgency = getUrgencyState(repItem.startDate, repItem.endDate);
+    const urgency = getUrgencyState(occurrence.startDate, occurrence.endDate);
     
     let categoryClass = '';
     if (scheduleStatus === 'ongoing') {
@@ -798,7 +1325,9 @@
           <div class="hero-copy">
             <div class="hero-kicker-row">
               <span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}</span>
-              <span class="hero-period">${formatDateRange(repItem.startDate, repItem.endDate)}</span>
+              <span class="hero-period">${formatDateRange(occurrence.startDate, occurrence.endDate)}</span>
+              ${getRepeatLabel(repItem) ? `<span class="repeat-badge">🔁 ${getRepeatLabel(repItem)}</span>` : ''}
+              ${isLunarItem(repItem) ? `<span class="lunar-schedule-badge">🌙 음력 ${repItem.lunar.month}.${repItem.lunar.day}</span>` : ''}
               ${scheduleStatus === 'ongoing' ? '<span class="badge-ongoing-tag">진행 중</span>' : ''}
             </div>
             <h2 class="hero-title">${repItem.important ? '⭐ ' : ''}${escapeHtml(repItem.title)}</h2>
@@ -925,13 +1454,15 @@
     }
 
     const cardsHtml = items.map(item => {
-      const calc = calculateDDay(item.startDate);
-      const scheduleStatus = getScheduleStatus(item.startDate, item.endDate);
+      const occurrence = getEffectiveOccurrence(item);
+      const calc = calculateDDay(occurrence.startDate);
+      const scheduleStatus = getScheduleStatus(occurrence.startDate, occurrence.endDate);
       const categoryInfo = getCategoryById(item.category);
-      const urgency = getUrgencyState(item.startDate, item.endDate);
+      const urgency = getUrgencyState(occurrence.startDate, occurrence.endDate);
       const cardStateClass = calc.status === 'today' ? 'card-today' : (calc.status === 'past' ? 'card-past' : '');
       const importantClass = item.important ? 'card-important' : '';
       const checklistStats = getChecklistStats(item);
+      const hasLinkedMemo = state.memos.some(memo => memo.linkedEventId === item.id);
 
       return `
         <article class="dday-card ${cardStateClass} ${importantClass}" data-id="${item.id}" tabindex="0" aria-label="${escapeHtml(item.title)} 상세 보기">
@@ -942,6 +1473,9 @@
               </span>
               ${scheduleStatus === 'ongoing' ? '<span class="badge-ongoing-tag">진행 중</span>' : ''}
               ${item.important ? '<span class="card-important-tag">⭐ 중요</span>' : ''}
+              ${hasLinkedMemo ? '<span class="memo-link-badge">📝 메모</span>' : ''}
+              ${getRepeatLabel(item) ? `<span class="repeat-badge">🔁 ${getRepeatLabel(item)}</span>` : ''}
+              ${isLunarItem(item) ? `<span class="lunar-schedule-badge">🌙 음력 ${item.lunar.isLeapMonth ? '윤' : ''}${item.lunar.month}.${item.lunar.day}</span>` : ''}
             </div>
             <div class="card-dday-badge-wrap">
               <span class="card-dday-number urgency-${urgency.key}" style="color:${urgency.color}">${scheduleStatus === 'ongoing' ? '진행 중' : calc.dDayText}</span>
@@ -960,7 +1494,7 @@
                     <line x1="8" y1="2" x2="8" y2="6"></line>
                     <line x1="3" y1="10" x2="21" y2="10"></line>
                   </svg>
-                  <span>${formatDateRange(item.startDate, item.endDate)}</span>
+                  <span>${formatDateRange(occurrence.startDate, occurrence.endDate)}</span>
                 </span>
                 ${checklistStats.total ? `<span class="card-checklist-compact ${checklistStats.completed === checklistStats.total ? 'completed' : ''}">${checklistStats.completed === checklistStats.total ? '✓ Check list 완료' : 'Check list'} ${checklistStats.completed}/${checklistStats.total}</span>` : ''}
               </div>
@@ -1050,14 +1584,16 @@
     }
 
     // Get active items according to category filter
-    const activeItems = state.activeCategory === 'all'
+    const sourceItems = state.activeCategory === 'all'
       ? state.items.filter(item=>!item.hidden)
       : state.items.filter(item => !item.hidden && item.category === state.activeCategory);
+    const activeItems = sourceItems.flatMap(item => getOccurrencesInRange(item, cells[0].dateStr, cells[cells.length - 1].dateStr));
 
     // Build HTML for each cell
     const cellsHtml = cells.map((cell) => {
       const isToday = cell.dateStr === todayStr;
       const cellDateStr = cell.dateStr;
+      const lunarText = state.settings.showLunarCalendar ? formatLunarCompact(cellDateStr) : '';
 
       // Filter events spanning this cell date
       const matchingEvents = activeItems.filter(item => {
@@ -1113,6 +1649,8 @@
           <div 
             class="cal-event-bar ${connectorClass} ${categoryInfo.eventClass}" style="background-color:${categoryInfo.color};border-color:${categoryInfo.color}" 
             data-id="${event.id}" 
+            data-occurrence-start="${event.startDate}"
+            data-occurrence-end="${event.endDate}"
             title="${eventTitle}"
             role="button"
             tabindex="0"
@@ -1138,7 +1676,7 @@
       return `
         <div class="${cellClasses}" data-date="${cellDateStr}">
           <div class="cell-header">
-            <span class="cell-day-number">${cell.dayNum}</span>
+            <span class="cell-date-stack"><span class="cell-day-number">${cell.dayNum}</span>${lunarText ? `<span class="lunar-date">${lunarText}</span>` : ''}</span>
             <span class="cell-add-indicator" aria-hidden="true">＋</span>
           </div>
           <div class="cell-events-list">
@@ -1156,11 +1694,188 @@
   function renderMobileCalendarAgenda() {
     if (!mobileCalendarAgenda) return;
     const date = state.selectedCalendarDate || toIsoDateString(getTodayMidnight());
-    const items = state.items.filter(item => !item.hidden && item.startDate <= date && (item.endDate || item.startDate) >= date && (state.activeCategory === 'all' || item.category === state.activeCategory));
-    mobileCalendarAgenda.innerHTML = `<div class="mobile-agenda-header"><h3>${formatDateWithDay(date)}</h3><button type="button" class="mobile-date-add-btn" data-add-date="${date}">＋ 이 날짜에 일정 추가</button></div>` + (items.length ? items.map(item => { const cat=getCategoryById(item.category); return `<button class="mobile-agenda-item" data-id="${item.id}" style="--agenda-color:${cat.color}"><span class="agenda-line"></span><span><b>${escapeHtml(item.title)}</b><small>${cat.icon} ${escapeHtml(cat.label)}</small></span></button>`; }).join('') : '<p>선택한 날짜의 일정이 없습니다.</p>');
+    const lunarFullText = state.settings.showLunarCalendar ? formatLunarFull(date) : '';
+    const items = state.items
+      .filter(item => !item.hidden && (state.activeCategory === 'all' || item.category === state.activeCategory))
+      .flatMap(item => getOccurrencesInRange(item, date, date));
+    mobileCalendarAgenda.innerHTML = `<div class="mobile-agenda-header"><h3>${formatDateWithDay(date)}${lunarFullText ? `<span class="mobile-agenda-lunar">${lunarFullText}</span>` : ''}</h3><button type="button" class="mobile-date-add-btn" data-add-date="${date}">＋ 이 날짜에 일정 추가</button></div>` + (items.length ? items.map(item => { const cat=getCategoryById(item.category); return `<button class="mobile-agenda-item" data-id="${item.id}" data-occurrence-start="${item.startDate}" data-occurrence-end="${item.endDate}" style="--agenda-color:${cat.color}"><span class="agenda-line"></span><span><b>${escapeHtml(item.title)}</b><small>${cat.icon} ${escapeHtml(cat.label)}</small></span></button>`; }).join('') : '<p>선택한 날짜의 일정이 없습니다.</p>');
   }
 
   // ==========================================
+  // Memo
+  function loadMemos() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(MEMO_STORAGE_KEY) || '[]');
+      return Array.isArray(saved) ? saved.filter(memo => memo && typeof memo.id === 'string').map(memo => ({
+        ...memo,
+        linkedEventId: typeof memo.linkedEventId === 'string' && memo.linkedEventId ? memo.linkedEventId : null
+      })) : [];
+    } catch (error) {
+      console.error('Failed to load memo data:', error);
+      return [];
+    }
+  }
+
+  function saveMemos() {
+    try {
+      localStorage.setItem(MEMO_STORAGE_KEY, JSON.stringify(state.memos));
+      return true;
+    } catch (error) {
+      console.error('Failed to save memo data:', error);
+      showToast('메모 저장 중 오류가 발생했습니다.');
+      return false;
+    }
+  }
+
+  function generateMemoId() {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `memo-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function formatMemoDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function getMemoLinkedItem(memo) {
+    return memo.linkedEventId ? state.items.find(item => item.id === memo.linkedEventId && !item.hidden) || null : null;
+  }
+
+  function formatMemoLinkedEvent(item) {
+    const occurrence = getEffectiveOccurrence(item);
+    const dateText = formatDateRange(occurrence.startDate, occurrence.endDate);
+    const repeatLabel = getRepeatLabel(item);
+    return `${item.title} · ${repeatLabel ? `${repeatLabel} · ` : ''}${dateText}`;
+  }
+
+  function renderMemoLinkedEventOptions(selectedId = null) {
+    const options = state.items
+      .filter(item => !item.hidden)
+      .sort((a, b) => getEffectiveOccurrence(a).startDate.localeCompare(getEffectiveOccurrence(b).startDate));
+    memoLinkedEventSelect.innerHTML = '<option value="">연결 안 함</option>' + options.map(item =>
+      `<option value="${escapeHtml(item.id)}"${item.id === selectedId ? ' selected' : ''}>${escapeHtml(formatMemoLinkedEvent(item))}</option>`
+    ).join('');
+  }
+
+  function renderMemos() {
+    if (!state.memos.length) {
+      memoList.innerHTML = '<section class="memo-empty-state"><h3>아직 작성된 메모가 없습니다.</h3><p>필요한 내용을 간단하게 기록해 보세요.</p><button type="button" class="btn btn-primary" data-memo-action="new">＋ 새 메모</button></section>';
+      return;
+    }
+    const query = state.memoSearchQuery.trim().toLocaleLowerCase();
+    const memos = state.memos
+      .filter(memo => state.activeCategory === 'all' || getMemoLinkedItem(memo)?.category === state.activeCategory)
+      .filter(memo => !query || `${memo.title || ''}\n${memo.content || ''}`.toLocaleLowerCase().includes(query))
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    if (!memos.length) {
+      memoList.innerHTML = `<section class="memo-empty-state memo-search-empty"><h3>${query ? '검색 결과가 없습니다.' : '이 카테고리에 연결된 메모가 없습니다.'}</h3><p>${query ? '다른 검색어를 입력해 보세요.' : '다른 카테고리를 선택해 보세요.'}</p></section>`;
+      return;
+    }
+    memoList.innerHTML = memos.map(memo => {
+      const title = (memo.title || '').trim() || '제목 없음';
+      const preview = memo.content || '내용 없음';
+      const linkedItem = getMemoLinkedItem(memo);
+      return `<article class="memo-card" data-memo-id="${escapeHtml(memo.id)}">
+        <div class="memo-card-top"><h3 class="memo-card-title">${escapeHtml(title)}</h3><div class="memo-card-flags">
+          <button type="button" class="memo-flag-btn memo-flag-important${memo.important ? ' active' : ''}" data-memo-action="important" aria-label="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}" aria-pressed="${Boolean(memo.important)}" title="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}">${memo.important ? '★' : '☆'}</button>
+          <button type="button" class="memo-flag-btn memo-flag-pin${memo.pinned ? ' active' : ''}" data-memo-action="pin" aria-label="${memo.pinned ? '메모 고정 해제' : '메모 고정'}" aria-pressed="${Boolean(memo.pinned)}" title="${memo.pinned ? '메모 고정 해제' : '메모 고정'}">📌</button>
+        </div></div>
+        <p class="memo-card-preview${memo.content ? '' : ' memo-card-preview-empty'}">${escapeHtml(preview)}</p>
+        ${linkedItem ? `<button type="button" class="memo-linked-event" data-memo-action="open-event" data-event-id="${escapeHtml(linkedItem.id)}" aria-label="${escapeHtml(linkedItem.title)} 일정 열기">📅 <span>${escapeHtml(formatMemoLinkedEvent(linkedItem))}</span></button>` : ''}
+        <div class="memo-card-footer">
+          <time class="memo-updated-at" datetime="${escapeHtml(memo.updatedAt)}">수정 ${formatMemoDate(memo.updatedAt)}</time>
+          <div class="memo-card-actions">
+            <button type="button" class="memo-action-btn" data-memo-action="edit">수정</button>
+            <button type="button" class="memo-action-btn memo-action-delete" data-memo-action="delete">삭제</button>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function openMemoModal(id = null) {
+    const memo = id ? state.memos.find(entry => entry.id === id) : null;
+    state.currentMemoEditId = memo ? memo.id : null;
+    memoEditId.value = memo ? memo.id : '';
+    memoModalTitle.textContent = memo ? '메모 수정' : '새 메모';
+    memoTitleInput.value = memo ? memo.title : '';
+    memoContentInput.value = memo ? memo.content : '';
+    renderMemoLinkedEventOptions(memo ? memo.linkedEventId : null);
+    memoFormError.textContent = '';
+    memoModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => memoTitleInput.focus(), 50);
+  }
+
+  function closeMemoModal() {
+    memoModal.hidden = true;
+    memoForm.reset();
+    memoFormError.textContent = '';
+    state.currentMemoEditId = null;
+    document.body.style.overflow = '';
+  }
+
+  function handleMemoSubmit(event) {
+    event.preventDefault();
+    const title = memoTitleInput.value.trim();
+    const content = memoContentInput.value;
+    const linkedEventId = memoLinkedEventSelect.value || null;
+    if (!title && !content.trim()) {
+      memoFormError.textContent = '제목 또는 내용을 입력해 주세요.';
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    const existing = state.currentMemoEditId && state.memos.find(memo => memo.id === state.currentMemoEditId);
+    if (existing) {
+      existing.title = title;
+      existing.content = content;
+      existing.linkedEventId = linkedEventId;
+      existing.updatedAt = timestamp;
+    } else {
+      state.memos.push({ id: generateMemoId(), title, content, createdAt: timestamp, updatedAt: timestamp, important: false, pinned: false, linkedEventId });
+    }
+    if (!saveMemos()) return;
+    renderApp();
+    closeMemoModal();
+    showToast(existing ? '메모가 수정되었습니다.' : '메모가 저장되었습니다.');
+  }
+
+  function openMemoDeleteModal(id) {
+    if (!state.memos.some(memo => memo.id === id)) return;
+    state.currentMemoDeleteId = id;
+    memoDeleteModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => cancelMemoDeleteBtn.focus(), 50);
+  }
+
+  function closeMemoDeleteModal() {
+    memoDeleteModal.hidden = true;
+    state.currentMemoDeleteId = null;
+    document.body.style.overflow = '';
+  }
+
+  function confirmMemoDelete() {
+    if (!state.currentMemoDeleteId) return;
+    const previous = state.memos;
+    state.memos = state.memos.filter(memo => memo.id !== state.currentMemoDeleteId);
+    if (!saveMemos()) { state.memos = previous; return; }
+    renderApp();
+    closeMemoDeleteModal();
+    showToast('메모가 삭제되었습니다.');
+  }
+
+  function toggleMemoFlag(id, field) {
+    const memo = state.memos.find(entry => entry.id === id);
+    if (!memo || !['important', 'pinned'].includes(field)) return;
+    const previous = memo[field];
+    memo[field] = !Boolean(memo[field]);
+    if (!saveMemos()) { if (previous === undefined) delete memo[field]; else memo[field] = previous; return; }
+    renderMemos();
+  }
+
   // Main Render Orchestration
   // ==========================================
 
@@ -1174,28 +1889,22 @@
       renderHeroSection(representativeItem);
       const filteredItems = getFilteredAndSortedItems();
       renderListSection(filteredItems);
-    } else {
+    } else if (state.currentView === 'calendar') {
       renderCalendar();
+    } else {
+      renderMemos();
     }
   }
 
   function switchView(viewName) {
     state.currentView = viewName;
-    if (viewName === 'dashboard') {
-      tabDashboardBtn.classList.add('active');
-      tabDashboardBtn.setAttribute('aria-selected', 'true');
-      tabCalendarBtn.classList.remove('active');
-      tabCalendarBtn.setAttribute('aria-selected', 'false');
-      dashboardView.hidden = false;
-      calendarView.hidden = true;
-    } else {
-      tabCalendarBtn.classList.add('active');
-      tabCalendarBtn.setAttribute('aria-selected', 'true');
-      tabDashboardBtn.classList.remove('active');
-      tabDashboardBtn.setAttribute('aria-selected', 'false');
-      dashboardView.hidden = true;
-      calendarView.hidden = false;
-    }
+    const views = { dashboard: [tabDashboardBtn, dashboardView], calendar: [tabCalendarBtn, calendarView], memo: [tabMemoBtn, memoView] };
+    Object.entries(views).forEach(([name, elements]) => {
+      const active = name === viewName;
+      elements[0].classList.toggle('active', active);
+      elements[0].setAttribute('aria-selected', String(active));
+      elements[1].hidden = !active;
+    });
     renderApp();
   }
 
@@ -1258,20 +1967,33 @@
     row.querySelector('input').select();
   }
 
-  function openDetailModal(id) {
+  function openDetailModal(id, occurrenceStart = null, occurrenceEnd = null) {
     const item = state.items.find(item => item.id === id);
     if (!item) return;
 
     state.currentDetailId = id;
-    const calc = calculateDDay(item.startDate);
-    const scheduleStatus = getScheduleStatus(item.startDate, item.endDate);
+    const occurrence = occurrenceStart
+      ? { startDate: occurrenceStart, endDate: occurrenceEnd || occurrenceStart }
+      : getEffectiveOccurrence(item);
+    const calc = calculateDDay(occurrence.startDate);
+    const scheduleStatus = getScheduleStatus(occurrence.startDate, occurrence.endDate);
     const categoryInfo = getCategoryById(item.category);
-    const urgency = getUrgencyState(item.startDate, item.endDate);
+    const urgency = getUrgencyState(occurrence.startDate, occurrence.endDate);
 
     detailTitle.textContent = `${item.important ? '⭐ ' : ''}${item.title}`;
     detailDDayBadge.textContent = scheduleStatus === 'ongoing' ? '진행 중' : `${calc.dDayText} (${urgency.label})`;
     detailDDayBadge.style.color = urgency.color;
-    detailDateRange.textContent = formatDateRange(item.startDate, item.endDate);
+    detailDateRange.textContent = formatDateRange(occurrence.startDate, occurrence.endDate);
+    const repeatLabel = getDetailedRepeatLabel(item);
+    detailRepeatRow.hidden = !repeatLabel;
+    detailRepeatValue.textContent = repeatLabel ? `🔁 ${repeatLabel}` : '';
+    detailLunarRow.hidden = !isLunarItem(item);
+    if (isLunarItem(item)) {
+      const occurrenceLunarYear = getLunarDateInfo(occurrence.startDate)?.year || item.lunar.year;
+      detailLunarValue.textContent = formatLunarOriginal(item, occurrenceLunarYear);
+    } else {
+      detailLunarValue.textContent = '';
+    }
 
     detailHeaderTags.innerHTML = `
       <span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">
@@ -1286,6 +2008,13 @@
     checklistAddToggle.textContent = '＋ Check list 추가';
     refreshChecklistUI();
 
+    const linkedMemos = state.memos.filter(memo => memo.linkedEventId === item.id);
+    detailLinkedMemosSection.hidden = linkedMemos.length === 0;
+    detailLinkedMemosList.innerHTML = linkedMemos.map(memo => {
+      const title = (memo.title || '').trim() || '제목 없음';
+      return `<button type="button" class="detail-linked-memo" data-linked-memo-id="${escapeHtml(memo.id)}" aria-label="${escapeHtml(title)} 메모로 이동">${escapeHtml(title)}</button>`;
+    }).join('');
+
     detailModal.hidden = false;
     document.body.style.overflow = 'hidden';
     setTimeout(() => closeDetailModalBtn.focus(), 50);
@@ -1297,6 +2026,21 @@
     checklistAddForm.hidden = true;
     checklistError.textContent = '';
     state.currentDetailId = null;
+  }
+
+  function focusMemoFromDetail(memoId) {
+    closeDetailModal();
+    state.memoSearchQuery = '';
+    memoSearchInput.value = '';
+    clearMemoSearchBtn.hidden = true;
+    switchView('memo');
+    requestAnimationFrame(() => {
+      const card = Array.from(memoList.querySelectorAll('[data-memo-id]')).find(element => element.dataset.memoId === memoId);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('memo-card-highlight');
+      setTimeout(() => card.classList.remove('memo-card-highlight'), 1800);
+    });
   }
 
   // ==========================================
@@ -1325,9 +2069,86 @@
     titleError.textContent = '';
     startDateError.textContent = '';
     endDateError.textContent = '';
+    lunarDateError.textContent = '';
+    solarRepeatError.textContent = '';
     titleInput.classList.remove('input-error');
     startDateInput.classList.remove('input-error');
     endDateInput.classList.remove('input-error');
+  }
+
+  function getSelectedCalendarType() {
+    return ddayForm.querySelector('input[name="calendarType"]:checked')?.value === 'lunar' ? 'lunar' : 'solar';
+  }
+
+  function setCalendarType(type) {
+    const normalized = type === 'lunar' ? 'lunar' : 'solar';
+    const input = ddayForm.querySelector(`input[name="calendarType"][value="${normalized}"]`);
+    if (input) input.checked = true;
+    const lunarMode = normalized === 'lunar';
+    solarDateFields.hidden = lunarMode || repeatCheckbox.checked;
+    lunarDateFields.hidden = !lunarMode;
+    startDateInput.required = !lunarMode && !repeatCheckbox.checked;
+    endDateInput.required = !lunarMode && !repeatCheckbox.checked;
+    if (lunarMode) {
+      repeatTypeSelect.value = 'yearly';
+      repeatTypeSelect.disabled = true;
+      if (repeatCheckbox.checked) repeatTypeSelect.hidden = false;
+    } else {
+      repeatTypeSelect.disabled = false;
+    }
+    updateSolarRepeatFields();
+    updateLunarYearVisibility();
+  }
+
+  function getSolarRepeatBaseDate() {
+    return parseLocalDate(startDateInput.value || toIsoDateString(getTodayMidnight()));
+  }
+
+  function updateRepeatDayOptions(preferredDay) {
+    const yearly = repeatTypeSelect.value === 'yearly';
+    const month = Number(repeatMonthSelect.value) || 1;
+    const maxDay = yearly ? new Date(2024, month, 0).getDate() : 31;
+    const selected = Math.min(Number(preferredDay || repeatDaySelect.value) || getSolarRepeatBaseDate().getDate(), maxDay);
+    repeatDaySelect.innerHTML = Array.from({ length:maxDay }, (_, index) => `<option value="${index + 1}">${index + 1}일</option>`).join('');
+    repeatDaySelect.value = String(selected);
+  }
+
+  function setSolarRepeatDefaults(repeat = null) {
+    const base = getSolarRepeatBaseDate();
+    repeatWeekdaySelect.value = String(repeat?.repeatWeekday ?? base.getDay());
+    repeatMonthSelect.value = String(repeat?.repeatMonth ?? (base.getMonth() + 1));
+    updateRepeatDayOptions(repeat?.repeatDay ?? base.getDate());
+  }
+
+  function updateSolarRepeatFields() {
+    const visible = getSelectedCalendarType() === 'solar' && repeatCheckbox.checked;
+    solarRepeatFields.hidden = !visible;
+    solarDateFields.hidden = getSelectedCalendarType() === 'lunar' || visible;
+    startDateInput.required = getSelectedCalendarType() === 'solar' && !visible;
+    endDateInput.required = getSelectedCalendarType() === 'solar' && !visible;
+    if (!visible) return;
+    const type = repeatTypeSelect.value;
+    repeatWeekdaySelect.hidden = type !== 'weekly';
+    repeatMonthSelect.hidden = type !== 'yearly';
+    repeatDaySelect.hidden = type === 'weekly';
+    solarRepeatFields.querySelector('.solar-repeat-selects').classList.toggle('single', type !== 'yearly');
+    solarRepeatFieldLabel.textContent = type === 'weekly' ? '반복 요일' : (type === 'monthly' ? '반복 날짜' : '양력 날짜');
+    if (type !== 'weekly') updateRepeatDayOptions();
+  }
+
+  function updateLunarYearVisibility() {
+    const hideYear = getSelectedCalendarType() === 'lunar' && repeatCheckbox.checked;
+    lunarYearField.hidden = hideYear;
+    lunarYearSelect.disabled = hideYear;
+    lunarDateFields.classList.toggle('lunar-repeat-mode', hideYear);
+  }
+
+  function setLunarFormValues(lunar) {
+    const value = lunar || getLunarDateInfo(startDateInput.value || getTodayMidnight()) || { year:new Date().getFullYear(), month:1, day:1, isLeapMonth:false };
+    lunarYearSelect.value = String(value.year);
+    lunarMonthSelect.value = String(value.month);
+    lunarDaySelect.value = String(value.day);
+    lunarLeapCheckbox.checked = Boolean(value.isLeapMonth);
   }
 
   function setCategoryRadio(catValue) {
@@ -1355,9 +2176,17 @@
     const initialDate = typeof selectedDate === 'string' ? selectedDate : toIsoDateString(getTodayMidnight());
     startDateInput.value = initialDate;
     endDateInput.value = initialDate;
+    setCalendarType('solar');
+    setLunarFormValues(getLunarDateInfo(initialDate));
     
     setCategoryRadio('personal');
     importantCheckbox.checked = false;
+    repeatCheckbox.checked = false;
+    repeatTypeSelect.value = 'monthly';
+    repeatTypeSelect.hidden = true;
+    setSolarRepeatDefaults();
+    updateSolarRepeatFields();
+    updateLunarYearVisibility();
     hiddenCheckbox.checked = false;
     clearFormErrors();
     
@@ -1378,8 +2207,19 @@
     titleInput.value = item.title;
     startDateInput.value = item.startDate;
     endDateInput.value = item.endDate || item.startDate;
+    setCalendarType(item.calendarType || 'solar');
+    setLunarFormValues(normalizeLunar(item.lunar));
     setCategoryRadio(item.category || 'personal');
     importantCheckbox.checked = Boolean(item.important);
+    const repeat = normalizeRepeat(item.repeat);
+    repeatCheckbox.checked = repeat.enabled;
+    repeatTypeSelect.value = repeat.type || 'monthly';
+    if (isLunarItem(item)) repeatTypeSelect.value = 'yearly';
+    repeatTypeSelect.hidden = !repeat.enabled;
+    repeatTypeSelect.disabled = isLunarItem(item);
+    setSolarRepeatDefaults(getRepeatRule(item));
+    updateSolarRepeatFields();
+    updateLunarYearVisibility();
     hiddenCheckbox.checked = Boolean(item.hidden);
     clearFormErrors();
 
@@ -1402,13 +2242,47 @@
     clearFormErrors();
 
     const titleVal = titleInput.value.trim();
-    const startVal = startDateInput.value.trim();
-    const endVal = endDateInput.value.trim() || startVal;
+    let startVal = startDateInput.value.trim();
+    let endVal = endDateInput.value.trim() || startVal;
+    const calendarTypeVal = getSelectedCalendarType();
+    const repeatRequested = repeatCheckbox.checked;
+    const existingLunarYear = normalizeLunar(state.items.find(item => item.id === state.currentEditId)?.lunar)?.year;
+    const currentLunarYear = getLunarDateInfo(getTodayMidnight())?.year || new Date().getFullYear();
+    const lunarVal = calendarTypeVal === 'lunar' ? {
+      year: repeatRequested ? (existingLunarYear || currentLunarYear) : Number(lunarYearSelect.value),
+      month: Number(lunarMonthSelect.value), day: Number(lunarDaySelect.value), isLeapMonth: lunarLeapCheckbox.checked
+    } : null;
     const categoryVal = getSelectedCategory();
     const importantVal = importantCheckbox.checked;
+    const repeatVal = { enabled: repeatRequested, type: repeatRequested ? (calendarTypeVal === 'lunar' ? 'yearly' : repeatTypeSelect.value) : null };
+    if (repeatRequested && calendarTypeVal === 'solar') {
+      if (repeatVal.type === 'weekly') repeatVal.repeatWeekday = Number(repeatWeekdaySelect.value);
+      if (repeatVal.type === 'monthly') repeatVal.repeatDay = Number(repeatDaySelect.value);
+      if (repeatVal.type === 'yearly') { repeatVal.repeatMonth = Number(repeatMonthSelect.value); repeatVal.repeatDay = Number(repeatDaySelect.value); }
+    }
     const hiddenVal = hiddenCheckbox.checked;
 
     let hasError = false;
+
+    if (calendarTypeVal === 'lunar') {
+      let convertedDate = null;
+      if (repeatRequested) {
+        for (let year = currentLunarYear; year <= Math.min(LUNAR_YEAR_MAX, currentLunarYear + 30) && !convertedDate; year += 1) {
+          convertedDate = lunarToSolar(year, lunarVal.month, lunarVal.day, lunarVal.isLeapMonth);
+        }
+      } else {
+        convertedDate = lunarToSolar(lunarVal.year, lunarVal.month, lunarVal.day, lunarVal.isLeapMonth);
+      }
+      if (!convertedDate) {
+        lunarDateError.textContent = lunarVal.isLeapMonth
+          ? (repeatRequested ? '지원 범위의 향후 연도에서 해당 윤달을 찾을 수 없습니다.' : '선택한 연도에는 해당 윤달 또는 날짜가 존재하지 않습니다.')
+          : '선택한 음력 월에는 해당 날짜가 존재하지 않습니다.';
+        hasError = true;
+      } else {
+        startVal = convertedDate;
+        endVal = convertedDate;
+      }
+    }
 
     // Title validation
     if (!titleVal) {
@@ -1422,18 +2296,18 @@
     }
 
     // Start Date validation
-    if (!startVal) {
+    if (calendarTypeVal === 'solar' && !repeatRequested && !startVal) {
       startDateError.textContent = '일정 시작일을 선택해주세요.';
       startDateInput.classList.add('input-error');
       hasError = true;
     }
 
     // End Date validation
-    if (!endVal) {
+    if (calendarTypeVal === 'solar' && !repeatRequested && !endVal) {
       endDateError.textContent = '일정 종료일을 선택해주세요.';
       endDateInput.classList.add('input-error');
       hasError = true;
-    } else if (startVal && endVal < startVal) {
+    } else if (!repeatRequested && startVal && endVal < startVal) {
       endDateError.textContent = '종료일은 시작일보다 빠를 수 없습니다.';
       endDateInput.classList.add('input-error');
       hasError = true;
@@ -1451,7 +2325,7 @@
     }
 
     if (hiddenVal && !localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)) {
-      requestPin(() => ddayForm.requestSubmit(), true);
+      showPinRequired();
       return;
     }
 
@@ -1465,7 +2339,10 @@
           startDate: startVal,
           endDate: endVal,
           category: categoryVal,
-          important: importantVal
+          important: importantVal,
+          calendarType: calendarTypeVal,
+          lunar: lunarVal,
+          repeat: repeatVal
           ,hidden: hiddenVal
         };
         saveDDays(state.items);
@@ -1481,6 +2358,9 @@
         endDate: endVal,
         category: categoryVal,
         important: importantVal,
+        calendarType: calendarTypeVal,
+        lunar: lunarVal,
+        repeat: repeatVal,
         hidden: hiddenVal,
         checklist: [],
         createdAt: new Date().toISOString()
@@ -1521,8 +2401,17 @@
     const itemIndex = state.items.findIndex(item => item.id === state.currentDeleteId);
     if (itemIndex > -1) {
       const deletedTitle = state.items[itemIndex].title;
+      const deletedId = state.items[itemIndex].id;
       state.items.splice(itemIndex, 1);
       saveDDays(state.items);
+      let memoLinksChanged = false;
+      state.memos.forEach(memo => {
+        if (memo.linkedEventId === deletedId) {
+          memo.linkedEventId = null;
+          memoLinksChanged = true;
+        }
+      });
+      if (memoLinksChanged) saveMemos();
       renderApp();
       showToast(`"${deletedTitle}" 일정이 삭제되었습니다.`);
     }
@@ -1636,17 +2525,28 @@
 
   function renderHiddenItems() {
     const items=state.items.filter(item=>item.hidden);
-    hiddenItemsList.innerHTML=items.length ? items.map(item=>{const cat=getCategoryById(item.category),calc=calculateDDay(item.startDate),stats=getChecklistStats(item);return `<article class="dday-card hidden-item-card" data-hidden-id="${item.id}"><div class="card-meta-row"><span class="card-category-badge" style="color:${cat.color};background:${cat.color}18">${cat.icon} ${escapeHtml(cat.label)}</span><span class="card-dday-number">${calc.dDayText}</span></div><h3 class="card-title">${item.important?'⭐ ':''}${escapeHtml(item.title)}</h3><div class="card-target-date"><span>${formatDateRange(item.startDate,item.endDate)}</span>${stats.total?`<span class="card-checklist-compact">Check list ${stats.completed}/${stats.total}</span>`:''}</div><div class="card-bottom-row"><button class="btn-card-action" data-hidden-action="edit" data-id="${item.id}">수정</button><button class="btn-card-action btn-action-delete" data-hidden-action="delete" data-id="${item.id}">삭제</button></div></article>`}).join('') : '<div class="empty-state-card"><h3 class="empty-title">숨김 일정이 없습니다.</h3></div>';
+    hiddenItemsList.innerHTML=items.length ? items.map(item=>{const cat=getCategoryById(item.category),occurrence=getEffectiveOccurrence(item),calc=calculateDDay(occurrence.startDate),stats=getChecklistStats(item),repeatLabel=getRepeatLabel(item);return `<article class="dday-card hidden-item-card" data-hidden-id="${item.id}"><div class="card-meta-row"><span class="card-category-badge" style="color:${cat.color};background:${cat.color}18">${cat.icon} ${escapeHtml(cat.label)}</span><span class="card-dday-number">${calc.dDayText}</span></div><h3 class="card-title">${item.important?'⭐ ':''}${escapeHtml(item.title)}</h3><div class="card-target-date"><span>${formatDateRange(occurrence.startDate,occurrence.endDate)}</span>${repeatLabel?`<span class="repeat-badge">🔁 ${repeatLabel}</span>`:''}${stats.total?`<span class="card-checklist-compact">Check list ${stats.completed}/${stats.total}</span>`:''}</div><div class="card-bottom-row"><button class="btn-card-action" data-hidden-action="edit" data-id="${item.id}">수정</button><button class="btn-card-action btn-action-delete" data-hidden-action="delete" data-id="${item.id}">삭제</button></div></article>`}).join('') : '<div class="empty-state-card"><h3 class="empty-title">숨김 일정이 없습니다.</h3></div>';
   }
   function openHiddenItems(){requestHiddenAccess(()=>{renderHiddenItems();hiddenItemsModal.hidden=false;document.body.style.overflow='hidden';});}
   function closeHiddenItems(){hiddenItemsModal.hidden=true;document.body.style.overflow='';}
-  function closeChangePin(){changePinModal.hidden=true;changePinError.textContent='';changePinForm.reset();document.body.style.overflow=hiddenItemsModal.hidden?'':'hidden';}
+  function closeChangePin(){changePinModal.hidden=true;changePinError.textContent='';changePinForm.reset();document.body.style.overflow=(hiddenItemsModal.hidden&&settingsModal.hidden)?'':'hidden';}
+  function openResetPin(){resetPinForm.reset();resetPinError.textContent='';resetPinModal.hidden=false;document.body.style.overflow='hidden';setTimeout(()=>resetCurrentPinInput.focus(),50);}
+  function closeResetPin(){resetPinModal.hidden=true;resetPinForm.reset();resetPinError.textContent='';document.body.style.overflow=settingsModal.hidden?'':'hidden';}
+  function closeConfirmResetPin(){confirmResetPinModal.hidden=true;document.body.style.overflow=settingsModal.hidden?'':'hidden';}
 
   // ==========================================
   // Event Listeners & Binding
   // ==========================================
 
   function initEventListeners() {
+    document.querySelectorAll('[data-home-navigation]').forEach(brand => {
+      brand.addEventListener('click', () => {
+        state.activeCategory = 'all';
+        switchView('dashboard');
+        closeDrawer();
+      });
+    });
+
     // View tab switching (robust direct binding)
     if (tabDashboardBtn) {
       tabDashboardBtn.addEventListener('click', (e) => {
@@ -1662,6 +2562,39 @@
         switchView('calendar');
       });
     }
+    if (tabMemoBtn) {
+      tabMemoBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchView('memo');
+      });
+    }
+
+    openMemoModalBtn.addEventListener('click', () => openMemoModal());
+    closeMemoModalBtn.addEventListener('click', closeMemoModal);
+    cancelMemoBtn.addEventListener('click', closeMemoModal);
+    memoForm.addEventListener('submit', handleMemoSubmit);
+    memoModal.addEventListener('click', event => { if (event.target === memoModal) closeMemoModal(); });
+    memoTitleInput.addEventListener('input', () => { memoFormError.textContent = ''; });
+    memoContentInput.addEventListener('input', () => { memoFormError.textContent = ''; });
+    memoSearchInput.addEventListener('input', event => { state.memoSearchQuery = event.target.value; clearMemoSearchBtn.hidden = !event.target.value; renderMemos(); });
+    clearMemoSearchBtn.addEventListener('click', () => { memoSearchInput.value = ''; state.memoSearchQuery = ''; clearMemoSearchBtn.hidden = true; renderMemos(); memoSearchInput.focus(); });
+    memoList.addEventListener('click', event => {
+      const action = event.target.closest('[data-memo-action]');
+      if (!action) return;
+      if (action.dataset.memoAction === 'new') { openMemoModal(); return; }
+      if (action.dataset.memoAction === 'open-event') { openDetailModal(action.dataset.eventId); return; }
+      const card = action.closest('[data-memo-id]');
+      if (!card) return;
+      if (action.dataset.memoAction === 'edit') openMemoModal(card.dataset.memoId);
+      if (action.dataset.memoAction === 'delete') openMemoDeleteModal(card.dataset.memoId);
+      if (action.dataset.memoAction === 'important') toggleMemoFlag(card.dataset.memoId, 'important');
+      if (action.dataset.memoAction === 'pin') toggleMemoFlag(card.dataset.memoId, 'pinned');
+    });
+    closeMemoDeleteBtn.addEventListener('click', closeMemoDeleteModal);
+    cancelMemoDeleteBtn.addEventListener('click', closeMemoDeleteModal);
+    confirmMemoDeleteBtn.addEventListener('click', confirmMemoDelete);
+    memoDeleteModal.addEventListener('click', event => { if (event.target === memoDeleteModal) closeMemoDeleteModal(); });
 
     // Calendar Navigation
     calPrevMonthBtn.addEventListener('click', () => {
@@ -1679,6 +2612,10 @@
         state.calendarMonth = 0;
         state.calendarYear++;
       }
+      renderCalendar();
+    });
+    lunarCalendarToggle.addEventListener('change', () => {
+      saveSettings({ ...state.settings, showLunarCalendar: lunarCalendarToggle.checked });
       renderCalendar();
     });
 
@@ -1707,7 +2644,7 @@
       const eventBar = e.target.closest('.cal-event-bar');
       if (eventBar && eventBar.dataset.id) {
         e.stopPropagation();
-        openDetailModal(eventBar.dataset.id);
+        openDetailModal(eventBar.dataset.id, eventBar.dataset.occurrenceStart, eventBar.dataset.occurrenceEnd);
         return;
       }
       const cell = e.target.closest('.calendar-cell[data-date]');
@@ -1721,7 +2658,7 @@
       const addBtn = e.target.closest('[data-add-date]');
       if (addBtn) { openAddModal(addBtn.dataset.addDate); return; }
       const item = e.target.closest('[data-id]');
-      if (item) openDetailModal(item.dataset.id);
+      if (item) openDetailModal(item.dataset.id, item.dataset.occurrenceStart, item.dataset.occurrenceEnd);
     });
 
     calendarGrid.addEventListener('keydown', (e) => {
@@ -1729,7 +2666,7 @@
         const eventBar = e.target.closest('.cal-event-bar');
         if (eventBar && eventBar.dataset.id) {
           e.preventDefault();
-          openDetailModal(eventBar.dataset.id);
+          openDetailModal(eventBar.dataset.id, eventBar.dataset.occurrenceStart, eventBar.dataset.occurrenceEnd);
         }
       }
     });
@@ -1738,6 +2675,8 @@
     closeDetailModalBtn.addEventListener('click', closeDetailModal);
     detailModal.addEventListener('click', (e) => {
       if (e.target === detailModal) closeDetailModal();
+      const memoLink = e.target.closest('[data-linked-memo-id]');
+      if (memoLink) focusMemoFromDetail(memoLink.dataset.linkedMemoId);
     });
 
     detailEditBtn.addEventListener('click', () => {
@@ -1821,12 +2760,24 @@
       e.preventDefault();
       saveSettings(getSettingsDraft());
       closeSettings();
-      showToast('화면 설정이 저장되었습니다.');
+      showToast('환경 설정이 저장되었습니다.');
     });
     resetSettingsBtn.addEventListener('click', () => setSettingsFormValues(DEFAULT_SETTINGS));
     cancelSettingsBtn.addEventListener('click', closeSettings);
     closeSettingsBtn.addEventListener('click', closeSettings);
     settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettings(); });
+    backupDataBtn.addEventListener('click', () => {
+      if (backupCurrentData()) {
+        saveDataManagementHistory({ lastBackupAt:new Date().toISOString() });
+        showToast('DayMark 백업 파일을 만들었습니다.');
+      } else showToast('백업 파일을 만들 수 없습니다.');
+    });
+    restoreDataBtn.addEventListener('click', () => { restoreFileInput.value = ''; restoreFileInput.click(); });
+    restoreFileInput.addEventListener('change', () => handleRestoreFile(restoreFileInput.files?.[0]));
+    closeRestoreConfirmBtn.addEventListener('click', closeRestoreConfirmation);
+    cancelRestoreBtn.addEventListener('click', closeRestoreConfirmation);
+    confirmRestoreBtn.addEventListener('click', restorePendingBackup);
+    restoreConfirmModal.addEventListener('click', event => { if (event.target === restoreConfirmModal) closeRestoreConfirmation(); });
 
     // Sidebar Category Filter
     // Bind each button directly so clicks also work reliably after visual/UI refactors.
@@ -1880,7 +2831,20 @@
     closeFormModalBtn.addEventListener('click', closeFormModal);
     cancelFormBtn.addEventListener('click', closeFormModal);
     ddayForm.addEventListener('submit', handleFormSubmit);
-    addCategoryBtn.addEventListener('click', () => openCategoryModal());
+    ddayForm.querySelectorAll('input[name="calendarType"]').forEach(input => input.addEventListener('change', () => {
+      setCalendarType(input.value);
+      if (input.value === 'lunar') setLunarFormValues(getLunarDateInfo(startDateInput.value || getTodayMidnight()));
+    }));
+    repeatCheckbox.addEventListener('change', () => {
+      repeatTypeSelect.hidden = !repeatCheckbox.checked;
+      if (getSelectedCalendarType() === 'lunar') repeatTypeSelect.value = 'yearly';
+      if (repeatCheckbox.checked && getSelectedCalendarType() === 'solar') setSolarRepeatDefaults();
+      updateSolarRepeatFields();
+      updateLunarYearVisibility();
+      if (repeatCheckbox.checked) repeatTypeSelect.focus();
+    });
+    repeatTypeSelect.addEventListener('change', () => { setSolarRepeatDefaults(); updateSolarRepeatFields(); });
+    repeatMonthSelect.addEventListener('change', () => updateRepeatDayOptions());
     manageCategoryBtn.addEventListener('click', openCategoryManagement);
     closeCategoryManagementBtn.addEventListener('click', closeCategoryManagement);
     managementAddCategoryBtn.addEventListener('click', () => { closeCategoryManagement(); openCategoryModal(); });
@@ -1899,9 +2863,22 @@
     closeHiddenItemsBtn.addEventListener('click', closeHiddenItems);
     hiddenItemsModal.addEventListener('click',e=>{if(e.target===hiddenItemsModal)closeHiddenItems();});
     hiddenItemsList.addEventListener('click',e=>{const action=e.target.closest('[data-hidden-action]');if(action){closeHiddenItems();action.dataset.hiddenAction==='edit'?openEditModal(action.dataset.id):openDeleteModal(action.dataset.id);return;}const card=e.target.closest('[data-hidden-id]');if(card){closeHiddenItems();openDetailModal(card.dataset.hiddenId);}});
-    changeHiddenPinBtn.addEventListener('click',()=>{changePinModal.hidden=false;document.body.style.overflow='hidden';setTimeout(()=>oldPinInput.focus(),50);});
+    managePinBtn.addEventListener('click',()=>{
+      if (localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)) { changePinModal.hidden=false; document.body.style.overflow='hidden'; setTimeout(()=>oldPinInput.focus(),50); }
+      else requestPin(updatePinSettingsUI, true);
+    });
+    resetPinBtn.addEventListener('click',openResetPin);
+    closePinRequiredBtn.addEventListener('click',closePinRequired); cancelPinRequiredBtn.addEventListener('click',closePinRequired);
+    pinRequiredModal.addEventListener('click',event=>{if(event.target===pinRequiredModal)closePinRequired();});
+    openPinSettingsBtn.addEventListener('click',()=>{pinRequiredModal.hidden=true;openSettings(true);});
     closeChangePinBtn.addEventListener('click',closeChangePin);cancelChangePinBtn.addEventListener('click',closeChangePin);
-    changePinForm.addEventListener('submit',async e=>{e.preventDefault();const oldPin=oldPinInput.value.trim(),newPin=newPinInput.value.trim(),confirm=newPinConfirmInput.value.trim();if(!/^\d{4}$/.test(oldPin)||!/^\d{4}$/.test(newPin)){changePinError.textContent='PIN은 숫자 4자리여야 합니다.';return;}if(newPin!==confirm){changePinError.textContent='새 PIN이 일치하지 않습니다.';return;}if(await hashPin(oldPin)!==localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)){changePinError.textContent='기존 PIN이 올바르지 않습니다.';return;}localStorage.setItem(PRIVACY_PIN_STORAGE_KEY,await hashPin(newPin));closeChangePin();showToast('PIN이 변경되었습니다.');});
+    changePinForm.addEventListener('submit',async e=>{e.preventDefault();const oldPin=oldPinInput.value.trim(),newPin=newPinInput.value.trim(),confirm=newPinConfirmInput.value.trim();if(!/^\d{4}$/.test(oldPin)||!/^\d{4}$/.test(newPin)){changePinError.textContent='PIN은 숫자 4자리여야 합니다.';return;}if(newPin!==confirm){changePinError.textContent='새 PIN이 일치하지 않습니다.';return;}if(await hashPin(oldPin)!==localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)){changePinError.textContent='현재 PIN이 올바르지 않습니다.';return;}localStorage.setItem(PRIVACY_PIN_STORAGE_KEY,await hashPin(newPin));updatePinSettingsUI();closeChangePin();showToast('PIN이 변경되었습니다.');});
+    closeResetPinBtn.addEventListener('click',closeResetPin);cancelResetPinBtn.addEventListener('click',closeResetPin);
+    resetPinModal.addEventListener('click',event=>{if(event.target===resetPinModal)closeResetPin();});
+    resetPinForm.addEventListener('submit',async event=>{event.preventDefault();const currentPin=resetCurrentPinInput.value.trim();if(!/^\d{4}$/.test(currentPin)){resetPinError.textContent='PIN은 숫자 4자리여야 합니다.';return;}if(await hashPin(currentPin)!==localStorage.getItem(PRIVACY_PIN_STORAGE_KEY)){resetPinError.textContent='현재 PIN이 올바르지 않습니다.';return;}resetPinModal.hidden=true;resetPinForm.reset();resetPinError.textContent='';confirmResetPinModal.hidden=false;setTimeout(()=>confirmResetPinBtn.focus(),50);});
+    closeConfirmResetPinBtn.addEventListener('click',closeConfirmResetPin);cancelConfirmResetPinBtn.addEventListener('click',closeConfirmResetPin);
+    confirmResetPinModal.addEventListener('click',event=>{if(event.target===confirmResetPinModal)closeConfirmResetPin();});
+    confirmResetPinBtn.addEventListener('click',()=>{localStorage.removeItem(PRIVACY_PIN_STORAGE_KEY);sessionStorage.removeItem(PRIVACY_SESSION_KEY);closeConfirmResetPin();updatePinSettingsUI();showToast('PIN이 초기화되었습니다.');});
     deleteCategoryBtn.addEventListener('click', requestCategoryDelete);
     cancelCategoryMoveBtn.addEventListener('click', () => { categoryMoveModal.hidden=true; state.currentCategoryDeleteId=null; document.body.style.overflow=''; });
     confirmCategoryMoveBtn.addEventListener('click', confirmCategoryMoveAndDelete);
@@ -1945,8 +2922,20 @@
     // Global Keyboard Support
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (!changePinModal.hidden) {
+        if (!memoDeleteModal.hidden) {
+          closeMemoDeleteModal();
+        } else if (!memoModal.hidden) {
+          closeMemoModal();
+        } else if (!restoreConfirmModal.hidden) {
+          closeRestoreConfirmation();
+        } else if (!changePinModal.hidden) {
           closeChangePin();
+        } else if (!confirmResetPinModal.hidden) {
+          closeConfirmResetPin();
+        } else if (!resetPinModal.hidden) {
+          closeResetPin();
+        } else if (!pinRequiredModal.hidden) {
+          closePinRequired();
         } else if (!hiddenItemsModal.hidden) {
           closeHiddenItems();
         } else if (!pinModal.hidden) {
@@ -2015,11 +3004,17 @@
   // App Initialization
   // ==========================================
   function initApp() {
+    lunarYearSelect.innerHTML = Array.from({length:LUNAR_YEAR_MAX - LUNAR_YEAR_MIN + 1}, (_, index) => LUNAR_YEAR_MIN + index).map(year => `<option value="${year}">${year}년</option>`).join('');
+    lunarMonthSelect.innerHTML = Array.from({length:12}, (_, index) => index + 1).map(month => `<option value="${month}">${month}월</option>`).join('');
+    lunarDaySelect.innerHTML = Array.from({length:30}, (_, index) => index + 1).map(day => `<option value="${day}">${day}일</option>`).join('');
+    repeatMonthSelect.innerHTML = Array.from({length:12}, (_, index) => index + 1).map(month => `<option value="${month}">${month}월</option>`).join('');
+    updateRepeatDayOptions();
     state.settings = loadSettings();
     applySettings(state.settings);
     state.categories = loadCategories();
     syncCategoryMap();
     state.items = loadDDays();
+    state.memos = loadMemos();
     saveDDays(state.items);
     initEventListeners();
     renderApp();
