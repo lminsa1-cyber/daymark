@@ -17,10 +17,13 @@
   const PRIVACY_PIN_STORAGE_KEY = 'daymark-hidden-pin-hash';
   const PRIVACY_SESSION_KEY = 'daymark-hidden-unlocked';
   const DATA_MANAGEMENT_HISTORY_KEY = 'daymark-data-management-history';
+  const AUTO_BACKUP_SETTINGS_KEY = 'daymark-auto-backup-settings';
+  const AUTO_BACKUP_SNAPSHOTS_KEY = 'daymark-auto-backup-snapshots';
+  const AUTO_BACKUP_MAX_SNAPSHOTS = 3;
   const LEGACY_STORAGE_KEY = 'dday-count-items';
   const LEGACY_CATEGORY_STORAGE_KEY = 'dday-count-categories';
   const LEGACY_SETTINGS_STORAGE_KEY = 'dday-count-settings';
-  const APP_VERSION = 'v1.1';
+  const APP_VERSION = 'v1.3';
   const BACKUP_FORMAT_VERSION = '1.0';
   const BACKUP_STORAGE_KEYS = [STORAGE_KEY, CATEGORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, MEMO_STORAGE_KEY, PRIVACY_PIN_STORAGE_KEY, LEGACY_STORAGE_KEY, LEGACY_CATEGORY_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY];
   const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium', showLunarCalendar: false };
@@ -333,7 +336,34 @@
   const lastBackupAt = document.getElementById('lastBackupAt');
   const lastRestoreAt = document.getElementById('lastRestoreAt');
   const restoredBackupAt = document.getElementById('restoredBackupAt');
+  const autoBackupEnabled = document.getElementById('autoBackupEnabled');
+  const autoBackupEnabledLabel = document.getElementById('autoBackupEnabledLabel');
+  const autoBackupPeriod = document.getElementById('autoBackupPeriod');
+  const lastAutoBackupAt = document.getElementById('lastAutoBackupAt');
+  const autoBackupCount = document.getElementById('autoBackupCount');
+  const manageAutoBackupsBtn = document.getElementById('manageAutoBackupsBtn');
+  const autoBackupManagerModal = document.getElementById('autoBackupManagerModal');
+  const closeAutoBackupManagerBtn = document.getElementById('closeAutoBackupManagerBtn');
+  const doneAutoBackupManagerBtn = document.getElementById('doneAutoBackupManagerBtn');
+  const autoBackupList = document.getElementById('autoBackupList');
+  const deleteAllAutoBackupsBtn = document.getElementById('deleteAllAutoBackupsBtn');
+  const autoBackupConfirmModal = document.getElementById('autoBackupConfirmModal');
+  const discardConfirmModal = document.getElementById('discardConfirmModal');
+  const closeDiscardConfirmBtn = document.getElementById('closeDiscardConfirmBtn');
+  const continueEditingBtn = document.getElementById('continueEditingBtn');
+  const confirmDiscardBtn = document.getElementById('confirmDiscardBtn');
+  let scheduleFormBaseline = '';
+  let memoFormBaseline = '';
+  let categoryFormBaseline = '';
+  let pendingDiscardAction = null;
+  const autoBackupConfirmTitle = document.getElementById('autoBackupConfirmTitle');
+  const autoBackupConfirmMessage = document.getElementById('autoBackupConfirmMessage');
+  const autoBackupConfirmSubtext = document.getElementById('autoBackupConfirmSubtext');
+  const closeAutoBackupConfirmBtn = document.getElementById('closeAutoBackupConfirmBtn');
+  const cancelAutoBackupActionBtn = document.getElementById('cancelAutoBackupActionBtn');
+  const confirmAutoBackupActionBtn = document.getElementById('confirmAutoBackupActionBtn');
   let pendingRestoreBackup = null;
+  let pendingAutoBackupAction = null;
 
   // ==========================================
   // Date Utilities
@@ -908,6 +938,7 @@
     setSettingsFormValues(state.settings);
     updatePinSettingsUI();
     updateDataManagementHistoryUI();
+    updateAutoBackupUI();
     closeDrawer();
     settingsModal.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -960,6 +991,199 @@
     lastBackupAt.textContent = formatDataManagementDate(history.lastBackupAt);
     lastRestoreAt.textContent = formatDataManagementDate(history.lastRestoreAt);
     restoredBackupAt.textContent = formatDataManagementDate(history.restoredBackupAt);
+  }
+
+  function loadAutoBackupSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AUTO_BACKUP_SETTINGS_KEY) || '{}');
+      return { enabled:saved.enabled === true, period:saved.period === 'monthly' ? 'monthly' : 'weekly' };
+    } catch (error) {
+      console.warn('자동 백업 설정을 불러오지 못했습니다.', error);
+      return { enabled:false, period:'weekly' };
+    }
+  }
+
+  function saveAutoBackupSettings(settings) {
+    try {
+      localStorage.setItem(AUTO_BACKUP_SETTINGS_KEY, JSON.stringify({ enabled:settings.enabled === true, period:settings.period === 'monthly' ? 'monthly' : 'weekly' }));
+      return true;
+    } catch (error) {
+      console.warn('자동 백업 설정을 저장하지 못했습니다.', error);
+      return false;
+    }
+  }
+
+  function loadAutoBackupSnapshots() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AUTO_BACKUP_SNAPSHOTS_KEY) || '[]');
+      if (!Array.isArray(saved)) return [];
+      return saved.filter(snapshot => snapshot && typeof snapshot.snapshotId === 'string' && !Number.isNaN(Date.parse(snapshot.createdAt)) && snapshot.data && typeof snapshot.data === 'object')
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, AUTO_BACKUP_MAX_SNAPSHOTS);
+    } catch (error) {
+      console.warn('자동 백업 Snapshot을 불러오지 못했습니다.', error);
+      return [];
+    }
+  }
+
+  function updateAutoBackupUI() {
+    const settings = loadAutoBackupSettings();
+    const snapshots = loadAutoBackupSnapshots();
+    autoBackupEnabled.checked = settings.enabled;
+    autoBackupEnabledLabel.textContent = settings.enabled ? 'ON' : 'OFF';
+    autoBackupPeriod.value = settings.period;
+    autoBackupPeriod.disabled = !settings.enabled;
+    lastAutoBackupAt.textContent = snapshots.length ? formatDataManagementDate(snapshots[0].createdAt) : '—';
+    autoBackupCount.textContent = `${snapshots.length}개`;
+  }
+
+  function createSnapshotId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return `snapshot_${window.crypto.randomUUID()}`;
+    return `snapshot_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function createAutoBackupSnapshot() {
+    try {
+      if (!Array.isArray(state.items) || !Array.isArray(state.categories) || !Array.isArray(state.memos)) throw new Error('DATA_NOT_READY');
+      const payload = createBackupPayload();
+      validateBackupPayload(JSON.parse(JSON.stringify(payload)));
+      const snapshot = { snapshotId:createSnapshotId(), createdAt:payload.createdAt, data:payload };
+      const snapshots = [snapshot, ...loadAutoBackupSnapshots()].slice(0, AUTO_BACKUP_MAX_SNAPSHOTS);
+      JSON.stringify(snapshots);
+      localStorage.setItem(AUTO_BACKUP_SNAPSHOTS_KEY, JSON.stringify(snapshots));
+      updateAutoBackupUI();
+      return true;
+    } catch (error) {
+      console.warn('자동 백업 Snapshot을 저장하지 못했습니다.', error);
+      return false;
+    }
+  }
+
+  function addCalendarMonthClamped(date) {
+    const result = new Date(date.getTime());
+    const targetMonth = result.getMonth() + 1;
+    const day = result.getDate();
+    result.setDate(1);
+    result.setMonth(targetMonth);
+    const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+    result.setDate(Math.min(day, lastDay));
+    return result;
+  }
+
+  function isAutoBackupDue(lastCreatedAt, period, currentDate = new Date()) {
+    const last = new Date(lastCreatedAt);
+    if (Number.isNaN(last.getTime())) return true;
+    const dueAt = period === 'monthly' ? addCalendarMonthClamped(last) : new Date(last.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return currentDate.getTime() >= dueAt.getTime();
+  }
+
+  function checkScheduledAutoBackup() {
+    const settings = loadAutoBackupSettings();
+    if (!settings.enabled) return;
+    const snapshots = loadAutoBackupSnapshots();
+    if (!snapshots.length || isAutoBackupDue(snapshots[0].createdAt, settings.period)) createAutoBackupSnapshot();
+  }
+
+  function renderAutoBackupManager() {
+    const snapshots = loadAutoBackupSnapshots();
+    autoBackupList.innerHTML = snapshots.length ? snapshots.map(snapshot => `
+      <div class="auto-backup-item">
+        <time datetime="${escapeHtml(snapshot.createdAt)}">${escapeHtml(formatDataManagementDate(snapshot.createdAt))}</time>
+        <div class="auto-backup-item-actions"><button type="button" class="btn btn-secondary" data-snapshot-restore="${escapeHtml(snapshot.snapshotId)}">복원</button><button type="button" class="btn btn-danger" data-snapshot-delete="${escapeHtml(snapshot.snapshotId)}">삭제</button></div>
+      </div>`).join('') : '<p class="auto-backup-empty">저장된 자동 백업이 없습니다.</p>';
+    deleteAllAutoBackupsBtn.hidden = snapshots.length === 0;
+    updateAutoBackupUI();
+  }
+
+  function openAutoBackupManager() {
+    renderAutoBackupManager();
+    autoBackupManagerModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => closeAutoBackupManagerBtn.focus(), 50);
+  }
+
+  function closeAutoBackupManager() {
+    autoBackupManagerModal.hidden = true;
+    document.body.style.overflow = settingsModal.hidden ? '' : 'hidden';
+  }
+
+  function openAutoBackupConfirmation(action, snapshot = null) {
+    pendingAutoBackupAction = { action, snapshotId:snapshot?.snapshotId || null };
+    const isRestore = action === 'restore';
+    autoBackupConfirmTitle.textContent = isRestore ? '자동 백업 복원' : '자동 백업 삭제';
+    autoBackupConfirmMessage.textContent = isRestore ? `${formatDataManagementDate(snapshot.createdAt)} 상태로 복원하시겠습니까?` : action === 'deleteAll' ? '저장된 자동 백업을 모두 삭제하시겠습니까?' : '이 자동 백업을 삭제하시겠습니까?';
+    autoBackupConfirmSubtext.textContent = isRestore ? '현재 데이터는 복원 전 JSON 파일로 안전 백업됩니다.' : '현재 일정과 Memo 데이터에는 영향을 주지 않습니다.';
+    confirmAutoBackupActionBtn.textContent = isRestore ? '복원' : '삭제';
+    confirmAutoBackupActionBtn.classList.toggle('btn-danger', !isRestore);
+    confirmAutoBackupActionBtn.classList.toggle('btn-primary', isRestore);
+    autoBackupConfirmModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => confirmAutoBackupActionBtn.focus(), 50);
+  }
+
+  function closeAutoBackupConfirmation() {
+    autoBackupConfirmModal.hidden = true;
+    pendingAutoBackupAction = null;
+    document.body.style.overflow = autoBackupManagerModal.hidden && settingsModal.hidden ? '' : 'hidden';
+  }
+
+  function applyBackupPayload(payload) {
+    const beforeRestore = {};
+    BACKUP_STORAGE_KEYS.forEach(key => { beforeRestore[key] = localStorage.getItem(key); });
+    try {
+      const validated = validateBackupPayload(JSON.parse(JSON.stringify(payload)));
+      const storage = validated.payload.data.storage;
+      BACKUP_STORAGE_KEYS.forEach(key => {
+        const value = Object.hasOwn(storage, key) ? storage[key] : null;
+        if (value === null || value === undefined) localStorage.removeItem(key);
+        else if (typeof value === 'string') localStorage.setItem(key, value);
+        else throw new Error(`Invalid storage value: ${key}`);
+      });
+      sessionStorage.removeItem(PRIVACY_SESSION_KEY);
+      state.settings = loadSettings();
+      applySettings(state.settings);
+      state.categories = loadCategories();
+      syncCategoryMap();
+      state.items = loadDDays();
+      state.memos = loadMemos();
+      state.activeCategory = 'all';
+      updatePinSettingsUI();
+      renderApp();
+      return true;
+    } catch (error) {
+      BACKUP_STORAGE_KEYS.forEach(key => {
+        const value = beforeRestore[key];
+        if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
+      });
+      state.settings = loadSettings(); applySettings(state.settings); state.categories = loadCategories(); syncCategoryMap(); state.items = loadDDays(); state.memos = loadMemos(); renderApp();
+      console.error('DayMark Snapshot restore failed:', error);
+      return false;
+    }
+  }
+
+  function executeAutoBackupAction() {
+    if (!pendingAutoBackupAction) return;
+    const { action, snapshotId } = pendingAutoBackupAction;
+    if (action === 'restore') {
+      const snapshot = loadAutoBackupSnapshots().find(entry => entry.snapshotId === snapshotId);
+      if (!snapshot) { closeAutoBackupConfirmation(); renderAutoBackupManager(); showToast('자동 백업을 찾을 수 없습니다.'); return; }
+      if (!backupCurrentData('DayMark_AutoBackup_BeforeRestore')) { showToast('현재 데이터의 안전 백업을 만들지 못해 복원을 중단했습니다.'); return; }
+      const restored = applyBackupPayload(snapshot.data);
+      closeAutoBackupConfirmation();
+      closeAutoBackupManager();
+      closeSettings();
+      showToast(restored ? '자동 백업 복원이 완료되었습니다.' : '복원 중 오류가 발생해 기존 데이터를 유지했습니다.');
+      return;
+    }
+    try {
+      const remaining = action === 'deleteAll' ? [] : loadAutoBackupSnapshots().filter(entry => entry.snapshotId !== snapshotId);
+      localStorage.setItem(AUTO_BACKUP_SNAPSHOTS_KEY, JSON.stringify(remaining));
+      closeAutoBackupConfirmation();
+      renderAutoBackupManager();
+      showToast(action === 'deleteAll' ? '자동 백업을 모두 삭제했습니다.' : '자동 백업을 삭제했습니다.');
+    } catch (error) {
+      console.warn('자동 백업 삭제에 실패했습니다.', error);
+      showToast('자동 백업을 삭제하지 못했습니다.');
+    }
   }
 
   function createBackupPayload() {
@@ -1266,7 +1490,44 @@
     currentDateDisplay.textContent = `오늘: ${formatDateWithDay(today)}`;
   }
 
-  function renderHeroSection(repItem) {
+  function renderTodaySchedule(items) {
+    const todayStr = toIsoDateString(getTodayMidnight());
+    const todayItems = items
+      .flatMap((item, index) => getOccurrencesInRange(item, todayStr, todayStr).map(occurrence => ({ item, occurrence, index })))
+      .sort((a, b) => Number(b.item.important) - Number(a.item.important) || a.index - b.index);
+
+    const rowsHtml = todayItems.map(({ item, occurrence }) => {
+      const categoryInfo = getCategoryById(item.category);
+      const hasLinkedMemo = state.memos.some(memo => memo.linkedEventId === item.id);
+      const scheduleStatus = getScheduleStatus(occurrence.startDate, occurrence.endDate);
+      return `
+        <article class="today-schedule-row" data-id="${item.id}" data-occurrence-start="${occurrence.startDate}" data-occurrence-end="${occurrence.endDate || occurrence.startDate}" tabindex="0" aria-label="${escapeHtml(item.title)} 상세 보기">
+          <div class="today-schedule-main">
+            <span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}</span>
+            <h3 class="today-schedule-title">${escapeHtml(item.title)}</h3>
+          </div>
+          <div class="today-schedule-meta">
+            ${item.important ? '<span class="card-important-tag">⭐ 중요</span>' : ''}
+            ${hasLinkedMemo ? '<span class="memo-link-badge">📝 메모</span>' : ''}
+            ${getRepeatLabel(item) ? `<span class="repeat-badge">🔁 ${getRepeatLabel(item)}</span>` : ''}
+            ${scheduleStatus === 'ongoing' ? '<span class="badge-ongoing-tag">진행 중</span>' : ''}
+          </div>
+        </article>`;
+    }).join('');
+
+    heroSection.innerHTML = `
+      <div class="today-schedule-card">
+        <header class="today-schedule-header">
+          <h2>오늘 일정</h2>
+          <p>${formatDateDot(todayStr)}${todayItems.length ? ` <span aria-hidden="true">·</span> 총 ${todayItems.length}개` : ''}</p>
+        </header>
+        ${todayItems.length
+          ? `<div class="today-schedule-list">${rowsHtml}</div>`
+          : '<p class="today-schedule-empty">오늘 예정된 일정이 없습니다.</p>'}
+      </div>`;
+  }
+
+  function renderLegacyHeroSection(repItem) {
     if (!repItem) {
       heroSection.innerHTML = `
         <div class="empty-state-card" role="region" aria-label="대표 D-Day 안내">
@@ -1796,6 +2057,59 @@
     }).join('');
   }
 
+  function getScheduleFormSnapshot() {
+    return JSON.stringify({
+      title: titleInput.value,
+      category: getSelectedCategory(),
+      calendarType: getSelectedCalendarType(),
+      startDate: startDateInput.value,
+      endDate: endDateInput.value,
+      lunarYear: lunarYearSelect.value,
+      lunarMonth: lunarMonthSelect.value,
+      lunarDay: lunarDaySelect.value,
+      lunarLeap: lunarLeapCheckbox.checked,
+      important: importantCheckbox.checked,
+      repeat: repeatCheckbox.checked,
+      repeatType: repeatTypeSelect.value,
+      repeatWeekday: repeatWeekdaySelect.value,
+      repeatMonth: repeatMonthSelect.value,
+      repeatDay: repeatDaySelect.value,
+      hidden: hiddenCheckbox.checked
+    });
+  }
+
+  function getMemoFormSnapshot() {
+    return JSON.stringify({ title: memoTitleInput.value, content: memoContentInput.value, linkedEventId: memoLinkedEventSelect.value });
+  }
+
+  function getCategoryFormSnapshot() {
+    return JSON.stringify({
+      name: categoryNameInput.value,
+      icon: iconPicker.querySelector('.selected')?.dataset.icon || 'calendar',
+      color: colorPicker.querySelector('.selected')?.dataset.color || CATEGORY_COLORS[0]
+    });
+  }
+
+  function requestDiscardConfirmation(action) {
+    pendingDiscardAction = action;
+    discardConfirmModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => continueEditingBtn.focus(), 50);
+  }
+
+  function continueEditing() {
+    discardConfirmModal.hidden = true;
+    pendingDiscardAction = null;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function confirmDiscard() {
+    const action = pendingDiscardAction;
+    discardConfirmModal.hidden = true;
+    pendingDiscardAction = null;
+    if (action) action();
+  }
+
   function openMemoModal(id = null) {
     const memo = id ? state.memos.find(entry => entry.id === id) : null;
     state.currentMemoEditId = memo ? memo.id : null;
@@ -1805,12 +2119,17 @@
     memoContentInput.value = memo ? memo.content : '';
     renderMemoLinkedEventOptions(memo ? memo.linkedEventId : null);
     memoFormError.textContent = '';
+    memoFormBaseline = getMemoFormSnapshot();
     memoModal.hidden = false;
     document.body.style.overflow = 'hidden';
     setTimeout(() => memoTitleInput.focus(), 50);
   }
 
-  function closeMemoModal() {
+  function closeMemoModal(force = false) {
+    if (!force && getMemoFormSnapshot() !== memoFormBaseline) {
+      requestDiscardConfirmation(() => closeMemoModal(true));
+      return;
+    }
     memoModal.hidden = true;
     memoForm.reset();
     memoFormError.textContent = '';
@@ -1839,7 +2158,7 @@
     }
     if (!saveMemos()) return;
     renderApp();
-    closeMemoModal();
+    closeMemoModal(true);
     showToast(existing ? '메모가 수정되었습니다.' : '메모가 저장되었습니다.');
   }
 
@@ -1885,9 +2204,8 @@
     renderCategoryActiveStates();
 
     if (state.currentView === 'dashboard') {
-      const representativeItem = getRepresentativeDDay(state.items.filter(item=>!item.hidden));
-      renderHeroSection(representativeItem);
       const filteredItems = getFilteredAndSortedItems();
+      renderTodaySchedule(filteredItems);
       renderListSection(filteredItems);
     } else if (state.currentView === 'calendar') {
       renderCalendar();
@@ -2189,6 +2507,7 @@
     updateLunarYearVisibility();
     hiddenCheckbox.checked = false;
     clearFormErrors();
+    scheduleFormBaseline = getScheduleFormSnapshot();
     
     closeDrawer();
     formModal.hidden = false;
@@ -2222,6 +2541,7 @@
     updateLunarYearVisibility();
     hiddenCheckbox.checked = Boolean(item.hidden);
     clearFormErrors();
+    scheduleFormBaseline = getScheduleFormSnapshot();
 
     closeDetailModal();
     closeDrawer();
@@ -2230,7 +2550,11 @@
     setTimeout(() => titleInput.focus(), 50);
   }
 
-  function closeFormModal() {
+  function closeFormModal(force = false) {
+    if (!force && getScheduleFormSnapshot() !== scheduleFormBaseline) {
+      requestDiscardConfirmation(() => closeFormModal(true));
+      return;
+    }
     formModal.hidden = true;
     document.body.style.overflow = '';
     state.currentEditId = null;
@@ -2371,7 +2695,7 @@
       showToast('새 일정이 등록되었습니다.');
     }
 
-    closeFormModal();
+    closeFormModal(true);
   }
 
   // ==========================================
@@ -2465,12 +2789,19 @@
     categoryDeleteArea.hidden = !category;
     deleteCategoryBtn.hidden = Boolean(category?.isDefault);
     defaultCategoryNotice.hidden = !category?.isDefault;
+    categoryFormBaseline = getCategoryFormSnapshot();
     categoryModal.hidden = false;
     document.body.style.overflow = 'hidden';
     setTimeout(() => categoryNameInput.focus(), 50);
   }
 
-  function closeCategoryModal() { categoryModal.hidden = true; state.currentCategoryEditId = null; document.body.style.overflow = ''; }
+  function closeCategoryModal(force = false) {
+    if (!force && getCategoryFormSnapshot() !== categoryFormBaseline) {
+      requestDiscardConfirmation(() => closeCategoryModal(true));
+      return;
+    }
+    categoryModal.hidden = true; state.currentCategoryEditId = null; document.body.style.overflow = '';
+  }
 
   function handleCategorySubmit(e) {
     e.preventDefault();
@@ -2492,7 +2823,7 @@
     saveCategories();
     renderApp();
     if (!categoryManagementModal.hidden) renderCategoryManagement();
-    closeCategoryModal();
+    closeCategoryModal(true);
   }
 
   function requestCategoryDelete() {
@@ -2502,7 +2833,7 @@
     if (!usedItems.length) {
       if (!window.confirm(`'${category.name}' 카테고리를 삭제하시겠습니까?`)) return;
       state.categories = state.categories.filter(cat => cat.id !== category.id);
-      saveCategories(); renderApp(); closeCategoryModal(); showToast('카테고리가 삭제되었습니다.');
+      saveCategories(); renderApp(); closeCategoryModal(true); showToast('카테고리가 삭제되었습니다.');
       return;
     }
     state.currentCategoryDeleteId = category.id;
@@ -2571,8 +2902,8 @@
     }
 
     openMemoModalBtn.addEventListener('click', () => openMemoModal());
-    closeMemoModalBtn.addEventListener('click', closeMemoModal);
-    cancelMemoBtn.addEventListener('click', closeMemoModal);
+    closeMemoModalBtn.addEventListener('click', () => closeMemoModal());
+    cancelMemoBtn.addEventListener('click', () => closeMemoModal());
     memoForm.addEventListener('submit', handleMemoSubmit);
     memoModal.addEventListener('click', event => { if (event.target === memoModal) closeMemoModal(); });
     memoTitleInput.addEventListener('input', () => { memoFormError.textContent = ''; });
@@ -2778,6 +3109,45 @@
     cancelRestoreBtn.addEventListener('click', closeRestoreConfirmation);
     confirmRestoreBtn.addEventListener('click', restorePendingBackup);
     restoreConfirmModal.addEventListener('click', event => { if (event.target === restoreConfirmModal) closeRestoreConfirmation(); });
+    autoBackupEnabled.addEventListener('change', () => {
+      const previous = loadAutoBackupSettings();
+      const next = { enabled:autoBackupEnabled.checked, period:previous.period || 'weekly' };
+      if (!saveAutoBackupSettings(next)) {
+        autoBackupEnabled.checked = previous.enabled;
+        showToast('자동 백업 설정을 저장하지 못했습니다.');
+        updateAutoBackupUI();
+        return;
+      }
+      updateAutoBackupUI();
+      if (next.enabled) {
+        if (createAutoBackupSnapshot()) showToast('현재 상태를 자동 백업했습니다.');
+        else showToast('자동 백업을 만들지 못했습니다. 설정은 유지됩니다.');
+      }
+    });
+    autoBackupPeriod.addEventListener('change', () => {
+      const settings = loadAutoBackupSettings();
+      if (!saveAutoBackupSettings({ ...settings, period:autoBackupPeriod.value })) {
+        showToast('자동 백업 주기를 저장하지 못했습니다.');
+      }
+      updateAutoBackupUI();
+    });
+    manageAutoBackupsBtn.addEventListener('click', openAutoBackupManager);
+    closeAutoBackupManagerBtn.addEventListener('click', closeAutoBackupManager);
+    doneAutoBackupManagerBtn.addEventListener('click', closeAutoBackupManager);
+    autoBackupManagerModal.addEventListener('click', event => { if (event.target === autoBackupManagerModal) closeAutoBackupManager(); });
+    autoBackupList.addEventListener('click', event => {
+      const restoreButton = event.target.closest('[data-snapshot-restore]');
+      const deleteButton = event.target.closest('[data-snapshot-delete]');
+      const snapshotId = restoreButton?.dataset.snapshotRestore || deleteButton?.dataset.snapshotDelete;
+      if (!snapshotId) return;
+      const snapshot = loadAutoBackupSnapshots().find(entry => entry.snapshotId === snapshotId);
+      if (snapshot) openAutoBackupConfirmation(restoreButton ? 'restore' : 'delete', snapshot);
+    });
+    deleteAllAutoBackupsBtn.addEventListener('click', () => openAutoBackupConfirmation('deleteAll'));
+    closeAutoBackupConfirmBtn.addEventListener('click', closeAutoBackupConfirmation);
+    cancelAutoBackupActionBtn.addEventListener('click', closeAutoBackupConfirmation);
+    confirmAutoBackupActionBtn.addEventListener('click', executeAutoBackupAction);
+    autoBackupConfirmModal.addEventListener('click', event => { if (event.target === autoBackupConfirmModal) closeAutoBackupConfirmation(); });
 
     // Sidebar Category Filter
     // Bind each button directly so clicks also work reliably after visual/UI refactors.
@@ -2828,8 +3198,8 @@
     });
 
     // Form Modal Controls
-    closeFormModalBtn.addEventListener('click', closeFormModal);
-    cancelFormBtn.addEventListener('click', closeFormModal);
+    closeFormModalBtn.addEventListener('click', () => closeFormModal());
+    cancelFormBtn.addEventListener('click', () => closeFormModal());
     ddayForm.addEventListener('submit', handleFormSubmit);
     ddayForm.querySelectorAll('input[name="calendarType"]').forEach(input => input.addEventListener('change', () => {
       setCalendarType(input.value);
@@ -2847,10 +3217,12 @@
     repeatMonthSelect.addEventListener('change', () => updateRepeatDayOptions());
     manageCategoryBtn.addEventListener('click', openCategoryManagement);
     closeCategoryManagementBtn.addEventListener('click', closeCategoryManagement);
+    categoryManagementModal.addEventListener('click', event => { if (event.target === categoryManagementModal) closeCategoryManagement(); });
     managementAddCategoryBtn.addEventListener('click', () => { closeCategoryManagement(); openCategoryModal(); });
     categoryManagementList.addEventListener('click', e => { const row=e.target.closest('[data-manage-category]'); if(!row)return; closeCategoryManagement(); openCategoryModal(row.dataset.manageCategory); });
-    closeCategoryModalBtn.addEventListener('click', closeCategoryModal);
-    cancelCategoryBtn.addEventListener('click', closeCategoryModal);
+    closeCategoryModalBtn.addEventListener('click', () => closeCategoryModal());
+    cancelCategoryBtn.addEventListener('click', () => closeCategoryModal());
+    categoryModal.addEventListener('click', event => { if (event.target === categoryModal) closeCategoryModal(); });
     categoryForm.addEventListener('submit', handleCategorySubmit);
     iconPicker.addEventListener('click', e => { const btn=e.target.closest('[data-icon]'); if(!btn)return; iconPicker.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected')); btn.classList.add('selected'); updateCategoryPreview(); });
     colorPicker.addEventListener('click', e => { const btn=e.target.closest('[data-color]'); if(!btn)return; colorPicker.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected')); btn.classList.add('selected'); updateCategoryPreview(); });
@@ -2909,6 +3281,10 @@
     // Delete Modal Controls
     cancelDeleteBtn.addEventListener('click', closeDeleteModal);
     confirmDeleteBtn.addEventListener('click', confirmDelete);
+    closeDiscardConfirmBtn.addEventListener('click', continueEditing);
+    continueEditingBtn.addEventListener('click', continueEditing);
+    confirmDiscardBtn.addEventListener('click', confirmDiscard);
+    discardConfirmModal.addEventListener('click', event => { if (event.target === discardConfirmModal) continueEditing(); });
 
     // Backdrop Click for Modals
     formModal.addEventListener('click', (e) => {
@@ -2922,7 +3298,14 @@
     // Global Keyboard Support
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (!memoDeleteModal.hidden) {
+        if (!discardConfirmModal.hidden) {
+          e.preventDefault();
+          continueEditing();
+        } else if (!autoBackupConfirmModal.hidden) {
+          closeAutoBackupConfirmation();
+        } else if (!autoBackupManagerModal.hidden) {
+          closeAutoBackupManager();
+        } else if (!memoDeleteModal.hidden) {
           closeMemoDeleteModal();
         } else if (!memoModal.hidden) {
           closeMemoModal();
@@ -2988,8 +3371,8 @@
         openDetailModal(e.target.dataset.id);
       }
     });
-    heroSection.addEventListener('click', event => { const card=event.target.closest('.hero-card[data-id]'); if(card) openDetailModal(card.dataset.id); });
-    heroSection.addEventListener('keydown', event => { if ((event.key==='Enter'||event.key===' ') && event.target.matches('.hero-card[data-id]')) { event.preventDefault(); openDetailModal(event.target.dataset.id); } });
+    heroSection.addEventListener('click', event => { const row=event.target.closest('.today-schedule-row[data-id]'); if(row) openDetailModal(row.dataset.id, row.dataset.occurrenceStart, row.dataset.occurrenceEnd); });
+    heroSection.addEventListener('keydown', event => { if ((event.key==='Enter'||event.key===' ') && event.target.matches('.today-schedule-row[data-id]')) { event.preventDefault(); openDetailModal(event.target.dataset.id, event.target.dataset.occurrenceStart, event.target.dataset.occurrenceEnd); } });
 
     // Input error clears
     titleInput.addEventListener('input', () => {
@@ -3018,6 +3401,8 @@
     saveDDays(state.items);
     initEventListeners();
     renderApp();
+    updateAutoBackupUI();
+    checkScheduledAutoBackup();
   }
 
   // Run on DOM ready

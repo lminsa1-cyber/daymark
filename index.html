@@ -256,8 +256,8 @@
            ========================================== -->
       <div class="view-panel" id="dashboardView" role="tabpanel" aria-labelledby="tabDashboardBtn">
         
-        <!-- Representative Hero D-Day Section -->
-        <section class="hero-section" aria-label="대표 D-Day" id="heroSection">
+        <!-- Today's Schedule Summary Section -->
+        <section class="hero-section" aria-label="오늘 일정" id="heroSection">
           <!-- Dynamically rendered via script.js -->
         </section>
 
@@ -493,6 +493,15 @@
           </dl>
           <div class="data-management-actions"><button type="button" class="btn btn-secondary" id="backupDataBtn">백업하기</button><button type="button" class="btn btn-secondary" id="restoreDataBtn">복구하기</button></div>
           <input type="file" id="restoreFileInput" accept="application/json,.json" hidden>
+          <div class="auto-backup-section">
+            <div class="auto-backup-control"><label for="autoBackupEnabled"><strong>자동 백업</strong></label><label class="settings-switch"><input type="checkbox" id="autoBackupEnabled"><span aria-hidden="true"></span><b id="autoBackupEnabledLabel">OFF</b></label></div>
+            <div class="auto-backup-control" id="autoBackupPeriodRow"><label for="autoBackupPeriod">백업 주기</label><select class="form-input auto-backup-period" id="autoBackupPeriod"><option value="weekly">매주</option><option value="monthly">매월</option></select></div>
+            <dl class="data-management-history auto-backup-history" aria-label="자동 백업 현황">
+              <div><dt>최근 자동 백업</dt><dd id="lastAutoBackupAt">—</dd></div>
+              <div><dt>보관된 백업</dt><dd id="autoBackupCount">0개</dd></div>
+            </dl>
+            <button type="button" class="btn btn-secondary" id="manageAutoBackupsBtn">자동 백업 관리</button>
+          </div>
         </section>
         <div class="modal-actions settings-actions"><button type="button" class="btn btn-secondary btn-reset-settings" id="resetSettingsBtn">기본값으로 복원</button><div class="settings-save-group"><button type="button" class="btn btn-secondary" id="cancelSettingsBtn">취소</button><button type="submit" class="btn btn-primary">저장</button></div></div>
       </form>
@@ -504,6 +513,22 @@
       <div class="modal-header"><div><h3 class="modal-title" id="restoreConfirmTitle">백업 데이터 확인</h3><p class="modal-subtitle">내용을 확인한 후 복원해 주세요.</p></div><button type="button" class="btn-close" id="closeRestoreConfirmBtn" aria-label="복원 확인 닫기">×</button></div>
       <div class="modal-body"><dl class="restore-summary"><div><dt>백업 일시</dt><dd id="restoreCreatedAt">-</dd></div><div><dt>일정</dt><dd id="restoreItemCount">0개</dd></div><div><dt>카테고리</dt><dd id="restoreCategoryCount">0개</dd></div><div><dt>DayMark 버전</dt><dd id="restoreAppVersion">-</dd></div><div><dt>백업 형식</dt><dd id="restoreFormatVersion">-</dd></div></dl><p class="restore-warning">이 백업 데이터로 전체 복원하시겠습니까?</p></div>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelRestoreBtn">취소</button><button type="button" class="btn btn-primary" id="confirmRestoreBtn">복원하기</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="autoBackupManagerModal" role="dialog" aria-modal="true" aria-labelledby="autoBackupManagerTitle" hidden>
+    <div class="modal-card auto-backup-manager-card">
+      <div class="modal-header"><div><h3 class="modal-title" id="autoBackupManagerTitle">자동 백업 관리</h3><p class="modal-subtitle">이 브라우저에 저장된 Snapshot</p></div><button type="button" class="btn-close" id="closeAutoBackupManagerBtn" aria-label="자동 백업 관리 닫기">×</button></div>
+      <div class="modal-body"><div class="auto-backup-list" id="autoBackupList"></div></div>
+      <div class="modal-actions auto-backup-manager-actions"><button type="button" class="btn btn-danger" id="deleteAllAutoBackupsBtn">자동 백업 전체 삭제</button><button type="button" class="btn btn-secondary" id="doneAutoBackupManagerBtn">닫기</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="autoBackupConfirmModal" role="dialog" aria-modal="true" aria-labelledby="autoBackupConfirmTitle" hidden>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header"><h3 class="modal-title" id="autoBackupConfirmTitle">자동 백업 확인</h3><button type="button" class="btn-close" id="closeAutoBackupConfirmBtn" aria-label="확인 창 닫기">×</button></div>
+      <div class="modal-body"><p class="auto-backup-confirm-message" id="autoBackupConfirmMessage"></p><p class="delete-subtext" id="autoBackupConfirmSubtext"></p></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelAutoBackupActionBtn">취소</button><button type="button" class="btn btn-primary" id="confirmAutoBackupActionBtn">확인</button></div>
     </div>
   </div>
 
@@ -788,6 +813,23 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">취소</button>
         <button type="button" class="btn btn-danger" id="confirmDeleteBtn">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsaved Changes Confirmation -->
+  <div class="modal-overlay discard-confirm-overlay" id="discardConfirmModal" role="alertdialog" aria-modal="true" aria-labelledby="discardConfirmTitle" aria-describedby="discardConfirmMessage" hidden>
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="discardConfirmTitle">작성 중인 내용이 있습니다.</h3>
+        <button type="button" class="btn-close" id="closeDiscardConfirmBtn" aria-label="닫기 확인 창 닫기">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-confirm-message" id="discardConfirmMessage">입력한 내용은 저장되지 않습니다. 닫으시겠습니까?</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="continueEditingBtn">계속 작성</button>
+        <button type="button" class="btn btn-danger" id="confirmDiscardBtn">닫기</button>
       </div>
     </div>
   </div>
