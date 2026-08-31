@@ -14,6 +14,7 @@
   const CATEGORY_STORAGE_KEY = 'daymark-v5-categories';
   const SETTINGS_STORAGE_KEY = 'daymark-v5-settings';
   const MEMO_STORAGE_KEY = 'daymark-v5-memos';
+  const MEMO_CATEGORY_STORAGE_KEY = 'daymark-v5-memo-categories';
   const PRIVACY_PIN_STORAGE_KEY = 'daymark-hidden-pin-hash';
   const PRIVACY_SESSION_KEY = 'daymark-hidden-unlocked';
   const DATA_MANAGEMENT_HISTORY_KEY = 'daymark-data-management-history';
@@ -25,8 +26,8 @@
   const LEGACY_SETTINGS_STORAGE_KEY = 'dday-count-settings';
   const APP_VERSION = 'v1.3';
   const BACKUP_FORMAT_VERSION = '1.0';
-  const BACKUP_STORAGE_KEYS = [STORAGE_KEY, CATEGORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, MEMO_STORAGE_KEY, PRIVACY_PIN_STORAGE_KEY, LEGACY_STORAGE_KEY, LEGACY_CATEGORY_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY];
-  const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium', showLunarCalendar: false };
+  const BACKUP_STORAGE_KEYS = [STORAGE_KEY, CATEGORY_STORAGE_KEY, SETTINGS_STORAGE_KEY, MEMO_STORAGE_KEY, MEMO_CATEGORY_STORAGE_KEY, PRIVACY_PIN_STORAGE_KEY, LEGACY_STORAGE_KEY, LEGACY_CATEGORY_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY];
+  const DEFAULT_SETTINGS = { fontFamily: 'system', fontSize: 'medium', showLunarCalendar: false, viewMode: 'list', memoViewMode: 'card' };
   const FONT_FAMILIES = {
     system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Arial, sans-serif',
     pretendard: 'Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif',
@@ -64,6 +65,13 @@
     { id: 'personal', name: '개인', icon: 'user', color: '#059669', isDefault: true },
     { id: 'other', name: '기타', icon: 'pin', color: '#64748B', isDefault: true }
   ];
+  const DEFAULT_MEMO_CATEGORIES = [
+    { id:'memo-experiment', name:'실험' },
+    { id:'memo-draft', name:'기안' },
+    { id:'memo-meeting', name:'회의' },
+    { id:'memo-idea', name:'아이디어' },
+    { id:'memo-other', name:'기타' }
+  ];
   const ICON_NAMES = ['briefcase','building','user','pin','calendar','graduation-cap','plane','flask','chart','document','home','heart','star','flag','clock','target','book','folder','check','gift'];
   const CATEGORY_COLORS = ['#4F46E5','#2563EB','#0891B2','#0D9488','#059669','#EA580C','#DC2626','#DB2777','#7C3AED','#64748B'];
   let CATEGORIES = {};
@@ -75,6 +83,7 @@
   const state = {
     items: [],
     memos: [],
+    memoCategories: [],
     categories: [],
     settings: { ...DEFAULT_SETTINGS },
     currentView: 'dashboard', // 'dashboard' | 'calendar' | 'memo'
@@ -82,7 +91,10 @@
     activeStatus: 'all',      // 'all' | 'upcoming' | 'ongoing' | 'completed'
     searchQuery: '',
     memoSearchQuery: '',
+    activeMemoCategory: 'all',
+    memoViewMode: 'card',     // 'card' | 'list' | 'sticky'
     sortBy: 'closest',        // 'closest' | 'farthest' | 'newest' | 'oldest'
+    viewMode: 'list',         // 'card' | 'list'
     
     // Calendar Navigation State
     calendarYear: now.getFullYear(),
@@ -106,7 +118,6 @@
   const heroSection = document.getElementById('heroSection');
   const cardsContainer = document.getElementById('cardsContainer');
   const listHeaderTitle = document.getElementById('listHeaderTitle');
-  const listCountBadge = document.getElementById('listCountBadge');
   const toastContainer = document.getElementById('toastContainer');
 
   // View Switch Elements
@@ -120,12 +131,15 @@
   const memoSearchInput = document.getElementById('memoSearchInput');
   const clearMemoSearchBtn = document.getElementById('clearMemoSearchBtn');
   const openMemoModalBtn = document.getElementById('openMemoModalBtn');
+  const memoViewModeButtons = document.querySelectorAll('[data-memo-view-mode]');
+  const memoCategoryBar = document.getElementById('memoCategoryBar');
   const memoModal = document.getElementById('memoModal');
   const memoModalTitle = document.getElementById('memoModalTitle');
   const memoForm = document.getElementById('memoForm');
   const memoEditId = document.getElementById('memoEditId');
   const memoTitleInput = document.getElementById('memoTitleInput');
   const memoContentInput = document.getElementById('memoContentInput');
+  const memoCategorySelect = document.getElementById('memoCategorySelect');
   const memoLinkedEventSelect = document.getElementById('memoLinkedEventSelect');
   const memoFormError = document.getElementById('memoFormError');
   const closeMemoModalBtn = document.getElementById('closeMemoModalBtn');
@@ -134,6 +148,13 @@
   const closeMemoDeleteBtn = document.getElementById('closeMemoDeleteBtn');
   const cancelMemoDeleteBtn = document.getElementById('cancelMemoDeleteBtn');
   const confirmMemoDeleteBtn = document.getElementById('confirmMemoDeleteBtn');
+  const memoCategoryModal = document.getElementById('memoCategoryModal');
+  const closeMemoCategoryModalBtn = document.getElementById('closeMemoCategoryModalBtn');
+  const doneMemoCategoryBtn = document.getElementById('doneMemoCategoryBtn');
+  const memoCategoryForm = document.getElementById('memoCategoryForm');
+  const memoCategoryNameInput = document.getElementById('memoCategoryNameInput');
+  const memoCategoryError = document.getElementById('memoCategoryError');
+  const memoCategoryManagementList = document.getElementById('memoCategoryManagementList');
 
   // Calendar Elements
   const calTodayBtn = document.getElementById('calTodayBtn');
@@ -144,6 +165,10 @@
   const calendarGrid = document.getElementById('calendarGrid');
   const mobileCalendarAgenda = document.getElementById('mobileCalendarAgenda');
   const lunarCalendarToggle = document.getElementById('lunarCalendarToggle');
+  const calendarMoreModal = document.getElementById('calendarMoreModal');
+  const calendarMoreTitle = document.getElementById('calendarMoreTitle');
+  const calendarMoreList = document.getElementById('calendarMoreList');
+  const closeCalendarMoreBtn = document.getElementById('closeCalendarMoreBtn');
 
   // Sidebar & Drawer Elements
   const sidebar = document.getElementById('sidebar');
@@ -153,6 +178,8 @@
   const sidebarAddBtn = document.getElementById('sidebarAddBtn');
   const openAddModalBtn = document.getElementById('openAddModalBtn');
   const mobileAddBtn = document.getElementById('mobileAddBtn');
+  const miniCalendarTitle = document.getElementById('miniCalendarTitle');
+  const miniCalendarDays = document.getElementById('miniCalendarDays');
 
   // Sidebar Category Badges
   const countAll = document.getElementById('countAll');
@@ -171,6 +198,7 @@
   const clearSearchBtn = document.getElementById('clearSearchBtn');
   const sortSelect = document.getElementById('sortSelect');
   const statusFilterTabs = document.getElementById('statusFilterTabs');
+  const viewModeButtons = document.querySelectorAll('[data-view-mode]');
 
   // Form Modal Elements
   const formModal = document.getElementById('formModal');
@@ -204,6 +232,7 @@
   const closeFormModalBtn = document.getElementById('closeFormModalBtn');
   const cancelFormBtn = document.getElementById('cancelFormBtn');
   const saveFormBtn = document.getElementById('saveFormBtn');
+  const deleteFormItemBtn = document.getElementById('deleteFormItemBtn');
 
   // Detail Modal Elements
   const detailModal = document.getElementById('detailModal');
@@ -593,6 +622,38 @@
     return normalized;
   }
 
+  function normalizeCompletedOccurrences(value) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter(date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)))];
+  }
+
+  function isRepeatingItem(item) {
+    return normalizeRepeat(item.repeat).enabled;
+  }
+
+  function isTaskOccurrenceCompleted(item, occurrenceStart = null) {
+    if (isRepeatingItem(item)) {
+      return Boolean(occurrenceStart) && normalizeCompletedOccurrences(item.completedOccurrences).includes(occurrenceStart);
+    }
+    return item.isTaskCompleted === true;
+  }
+
+  function toggleTaskCompletion(id, occurrenceStart = null) {
+    const item = state.items.find(entry => entry.id === id);
+    if (!item) return;
+    if (isRepeatingItem(item)) {
+      const occurrenceKey = occurrenceStart || getEffectiveOccurrence(item).startDate;
+      const completed = new Set(normalizeCompletedOccurrences(item.completedOccurrences));
+      if (completed.has(occurrenceKey)) completed.delete(occurrenceKey);
+      else completed.add(occurrenceKey);
+      item.completedOccurrences = [...completed].sort();
+    } else {
+      item.isTaskCompleted = item.isTaskCompleted !== true;
+    }
+    saveDDays(state.items);
+    renderApp();
+  }
+
   function getRepeatRule(item) {
     const repeat = normalizeRepeat(item.repeat);
     const base = parseLocalDate(item.startDate);
@@ -814,7 +875,7 @@
 
   function getUrgencyState(startDate, endDate) {
     const status = getScheduleStatus(startDate, endDate);
-    if (status === 'completed') return { key:'completed', label:'완료', color:'#64748B' };
+    if (status === 'completed') return { key:'completed', label:'지난 일정', color:'#64748B' };
     if (status === 'ongoing') return { key:'ongoing', label:'진행 중', color:'#059669' };
     const days = calculateDDay(startDate).diffDays;
     if (days === 0) return { key:'today', label:'오늘', color:'#DC2626' };
@@ -853,6 +914,8 @@
               calendarType: item.calendarType === 'lunar' && normalizeLunar(item.lunar) ? 'lunar' : 'solar',
               lunar: item.calendarType === 'lunar' ? normalizeLunar(item.lunar) : null,
               repeat: normalizeRepeat(item.repeat),
+              isTaskCompleted: item.isTaskCompleted === true,
+              completedOccurrences: normalizeCompletedOccurrences(item.completedOccurrences),
               checklist: Array.isArray(item.checklist) ? item.checklist.filter(check => check && check.id && typeof check.text === 'string' && check.text.trim()).map(check => ({ id:String(check.id), text:String(check.text).trim().slice(0,100), completed:Boolean(check.completed) })) : [],
               createdAt: item.createdAt || new Date().toISOString()
             };
@@ -885,7 +948,9 @@
       return {
         fontFamily: Object.hasOwn(FONT_FAMILIES, saved.fontFamily) ? saved.fontFamily : DEFAULT_SETTINGS.fontFamily,
         fontSize: Object.hasOwn(FONT_SCALES, saved.fontSize) ? saved.fontSize : DEFAULT_SETTINGS.fontSize,
-        showLunarCalendar: saved.showLunarCalendar === true
+        showLunarCalendar: saved.showLunarCalendar === true,
+        viewMode: saved.viewMode === 'card' ? 'card' : 'list',
+        memoViewMode: ['card', 'list', 'sticky'].includes(saved.memoViewMode) ? saved.memoViewMode : DEFAULT_SETTINGS.memoViewMode
       };
     } catch (error) {
       console.warn('설정 데이터를 불러오지 못했습니다. 기본값을 사용합니다.', error);
@@ -897,6 +962,18 @@
     document.documentElement.dataset.fontFamily = settings.fontFamily;
     document.documentElement.dataset.fontSize = settings.fontSize;
     if (lunarCalendarToggle) lunarCalendarToggle.checked = settings.showLunarCalendar === true;
+    state.viewMode = settings.viewMode === 'card' ? 'card' : 'list';
+    state.memoViewMode = ['card', 'list', 'sticky'].includes(settings.memoViewMode) ? settings.memoViewMode : DEFAULT_SETTINGS.memoViewMode;
+    viewModeButtons.forEach(button => {
+      const isActive = button.dataset.viewMode === state.viewMode;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
+    });
+    memoViewModeButtons.forEach(button => {
+      const isActive = button.dataset.memoViewMode === state.memoViewMode;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
+    });
   }
 
   function saveSettings(settings) {
@@ -910,7 +987,9 @@
     return {
       fontFamily: Object.hasOwn(FONT_FAMILIES, fontFamilySelect.value) ? fontFamilySelect.value : 'system',
       fontSize: selectedSize && Object.hasOwn(FONT_SCALES, selectedSize.value) ? selectedSize.value : 'medium',
-      showLunarCalendar: state.settings.showLunarCalendar === true
+      showLunarCalendar: state.settings.showLunarCalendar === true,
+      viewMode: state.viewMode,
+      memoViewMode: state.memoViewMode
     };
   }
 
@@ -1145,7 +1224,9 @@
       syncCategoryMap();
       state.items = loadDDays();
       state.memos = loadMemos();
+      state.memoCategories = loadMemoCategories();
       state.activeCategory = 'all';
+      state.activeMemoCategory = 'all';
       updatePinSettingsUI();
       renderApp();
       return true;
@@ -1154,7 +1235,7 @@
         const value = beforeRestore[key];
         if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
       });
-      state.settings = loadSettings(); applySettings(state.settings); state.categories = loadCategories(); syncCategoryMap(); state.items = loadDDays(); state.memos = loadMemos(); renderApp();
+      state.settings = loadSettings(); applySettings(state.settings); state.categories = loadCategories(); syncCategoryMap(); state.items = loadDDays(); state.memos = loadMemos(); state.memoCategories = loadMemoCategories(); renderApp();
       console.error('DayMark Snapshot restore failed:', error);
       return false;
     }
@@ -1307,7 +1388,9 @@
       syncCategoryMap();
       state.items = loadDDays();
       state.memos = loadMemos();
+      state.memoCategories = loadMemoCategories();
       state.activeCategory = 'all';
+      state.activeMemoCategory = 'all';
       updatePinSettingsUI();
       closeSettings();
       renderApp();
@@ -1324,6 +1407,7 @@
       syncCategoryMap();
       state.items = loadDDays();
       state.memos = loadMemos();
+      state.memoCategories = loadMemoCategories();
       renderApp();
       console.error('DayMark restore failed:', error);
       showToast('데이터 복원 중 오류가 발생해 기존 데이터를 유지했습니다.');
@@ -1354,11 +1438,8 @@
    */
   function updateCategoryCounts() {
     const visibleItems=state.items.filter(item=>!item.hidden);
-    const isMemoView = state.currentView === 'memo';
-    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체</span></span><span class="nav-count-badge">${isMemoView ? state.memos.length : visibleItems.length}</span></button></li>` + state.categories.map(cat => {
-      const count = isMemoView
-        ? state.memos.filter(memo => getMemoLinkedItem(memo)?.category === cat.id).length
-        : visibleItems.filter(item => item.category === cat.id).length;
+    categoryNavList.innerHTML = `<li class="nav-item"><button type="button" class="nav-link" data-category="all"><span class="nav-icon-text"><span class="nav-icon">▣</span><span>전체</span></span><span class="nav-count-badge">${visibleItems.length}</span></button></li>` + state.categories.map(cat => {
+      const count = visibleItems.filter(item => item.category === cat.id).length;
       return `<li class="nav-item category-nav-item"><button type="button" class="nav-link" data-category="${cat.id}"><span class="nav-icon-text"><span class="nav-icon" style="color:${cat.color}">${getIconSvg(cat.icon)}</span><span>${escapeHtml(cat.name)}</span></span><span class="nav-count-badge">${count}</span></button><button class="category-edit-btn" data-edit-category="${cat.id}" aria-label="${escapeHtml(cat.name)} 카테고리 수정">⋮</button></li>`;
     }).join('');
     mobileCategoryChips.innerHTML = `<button type="button" class="category-chip" data-category="all">전체</button>` + state.categories.map(cat => `<button type="button" class="category-chip" data-category="${cat.id}" style="--category-color:${cat.color}">${getIconSvg(cat.icon,14)} ${escapeHtml(cat.name)}</button>`).join('');
@@ -1492,17 +1573,17 @@
 
   function renderTodaySchedule(items) {
     const todayStr = toIsoDateString(getTodayMidnight());
-    const todayItems = items
-      .flatMap((item, index) => getOccurrencesInRange(item, todayStr, todayStr).map(occurrence => ({ item, occurrence, index })))
-      .sort((a, b) => Number(b.item.important) - Number(a.item.important) || a.index - b.index);
+    const todayItems = sortItems(items, state.sortBy)
+      .flatMap(item => getOccurrencesInRange(item, todayStr, todayStr).map(occurrence => ({ item, occurrence })));
 
     const rowsHtml = todayItems.map(({ item, occurrence }) => {
       const categoryInfo = getCategoryById(item.category);
       const hasLinkedMemo = state.memos.some(memo => memo.linkedEventId === item.id);
-      const scheduleStatus = getScheduleStatus(occurrence.startDate, occurrence.endDate);
+      const taskCompleted = isTaskOccurrenceCompleted(item, occurrence.startDate);
       return `
         <article class="today-schedule-row" data-id="${item.id}" data-occurrence-start="${occurrence.startDate}" data-occurrence-end="${occurrence.endDate || occurrence.startDate}" tabindex="0" aria-label="${escapeHtml(item.title)} 상세 보기">
           <div class="today-schedule-main">
+            <button type="button" class="today-task-checkbox${taskCompleted ? ' completed' : ''}" data-task-completion data-id="${item.id}" data-occurrence-start="${occurrence.startDate}" aria-pressed="${taskCompleted}" aria-label="${escapeHtml(item.title)} 일정 ${taskCompleted ? '완료 취소' : '완료 처리'}"><span aria-hidden="true">${taskCompleted ? '✓' : ''}</span></button>
             <span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}</span>
             <h3 class="today-schedule-title">${escapeHtml(item.title)}</h3>
           </div>
@@ -1510,7 +1591,6 @@
             ${item.important ? '<span class="card-important-tag">⭐ 중요</span>' : ''}
             ${hasLinkedMemo ? '<span class="memo-link-badge">📝 메모</span>' : ''}
             ${getRepeatLabel(item) ? `<span class="repeat-badge">🔁 ${getRepeatLabel(item)}</span>` : ''}
-            ${scheduleStatus === 'ongoing' ? '<span class="badge-ongoing-tag">진행 중</span>' : ''}
           </div>
         </article>`;
     }).join('');
@@ -1650,27 +1730,48 @@
     let catLabel = activeCategoryInfo ? `${activeCategoryInfo.label} 일정` : '전체 일정';
     calCategoryIndicator.textContent = catLabel;
 
-    // Update List Section Title
-    let catTitle = activeCategoryInfo ? `${activeCategoryInfo.label} 일정` : 'My DayMark';
-
-    if (state.activeStatus === 'upcoming') catTitle += ' (예정)';
-    else if (state.activeStatus === 'ongoing') catTitle += ' (진행 중)';
-    else if (state.activeStatus === 'completed') catTitle += ' (완료)';
-
-    if (state.searchQuery.trim()) {
-      catTitle += ` - "${state.searchQuery.trim()}" 검색 결과`;
-    }
-
-    listHeaderTitle.textContent = catTitle;
+    // Keep the Dashboard list title independent from category/status/search filters.
+    listHeaderTitle.textContent = 'My DayMark';
   }
 
   // ==========================================
   // UI Rendering: Dashboard Cards List
   // ==========================================
 
-  function renderListSection(items) {
-    listCountBadge.textContent = items.length;
+  function renderScheduleList(items) {
+    const rowsHtml = items.map(item => {
+      const occurrence = getEffectiveOccurrence(item);
+      const calc = calculateDDay(occurrence.startDate);
+      const categoryInfo = getCategoryById(item.category);
+      const urgency = getUrgencyState(occurrence.startDate, occurrence.endDate);
+      const checklistStats = getChecklistStats(item);
+      const hasLinkedMemo = state.memos.some(memo => memo.linkedEventId === item.id);
+      const taskCompleted = isTaskOccurrenceCompleted(item, occurrence.startDate);
 
+      return `
+        <article class="schedule-list-row" data-id="${item.id}" tabindex="0" aria-label="${escapeHtml(item.title)} 상세 보기">
+          <div class="schedule-list-dday urgency-${urgency.key}" style="color:${urgency.color}">${calc.dDayText}</div>
+          <div class="schedule-list-date">${formatDateRange(occurrence.startDate, occurrence.endDate)}</div>
+          <div class="schedule-list-category"><span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}</span></div>
+          <h3 class="schedule-list-title" title="${escapeHtml(item.title)}">${item.important ? '<span class="schedule-list-important" title="중요 일정" aria-label="중요 일정">⭐</span> ' : ''}${escapeHtml(item.title)}</h3>
+          <div class="schedule-list-memo" aria-label="메모">${hasLinkedMemo ? '<span title="연결된 메모">📝</span>' : ''}</div>
+          <div class="schedule-list-checklist" aria-label="Check list">${checklistStats.total ? `${checklistStats.completed}/${checklistStats.total}` : ''}</div>
+          <div class="schedule-list-complete">
+            <button type="button" class="list-complete-btn btn-action-complete${taskCompleted ? ' completed' : ''}" data-id="${item.id}" data-occurrence-start="${occurrence.startDate}" aria-pressed="${taskCompleted}" aria-label="${escapeHtml(item.title)} 일정 ${taskCompleted ? '완료 취소' : '완료 처리'}">${taskCompleted ? '☑' : '□'}</button>
+          </div>
+        </article>`;
+    }).join('');
+
+    cardsContainer.innerHTML = `
+      <div class="schedule-list" role="table" aria-label="My DayMark 일정 목록">
+        <div class="schedule-list-head" role="row">
+          <span>D-Day</span><span>날짜</span><span>카테고리</span><span>일정명</span><span>메모</span><span>Check list</span><span>완료</span>
+        </div>
+        <div class="schedule-list-body">${rowsHtml}</div>
+      </div>`;
+  }
+
+  function renderListSection(items) {
     if (items.length === 0) {
       const isFiltered = state.activeCategory !== 'all' || state.activeStatus !== 'all' || state.searchQuery.trim() !== '';
       const emptyMsg = isFiltered 
@@ -1714,6 +1815,11 @@
       return;
     }
 
+    if (state.viewMode === 'list') {
+      renderScheduleList(items);
+      return;
+    }
+
     const cardsHtml = items.map(item => {
       const occurrence = getEffectiveOccurrence(item);
       const calc = calculateDDay(occurrence.startDate);
@@ -1724,6 +1830,7 @@
       const importantClass = item.important ? 'card-important' : '';
       const checklistStats = getChecklistStats(item);
       const hasLinkedMemo = state.memos.some(memo => memo.linkedEventId === item.id);
+      const taskCompleted = isTaskOccurrenceCompleted(item, occurrence.startDate);
 
       return `
         <article class="dday-card ${cardStateClass} ${importantClass}" data-id="${item.id}" tabindex="0" aria-label="${escapeHtml(item.title)} 상세 보기">
@@ -1763,6 +1870,7 @@
           </div>
 
           <div class="card-bottom-row">
+            <button type="button" class="btn-card-action btn-action-complete${taskCompleted ? ' completed' : ''}" data-id="${item.id}" data-occurrence-start="${occurrence.startDate}" aria-pressed="${taskCompleted}" aria-label="${escapeHtml(item.title)} 일정 ${taskCompleted ? '완료 취소' : '완료 처리'}"><span>${taskCompleted ? '✓ 완료' : '완료'}</span></button>
             <button type="button" class="btn-card-action btn-action-edit" data-id="${item.id}" aria-label="${escapeHtml(item.title)} 일정 수정">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1788,6 +1896,22 @@
   // ==========================================
   // UI Rendering: Calendar Month View
   // ==========================================
+
+  function sortCalendarEvents(events) {
+    return events.sort((a, b) => {
+      const spanA = parseLocalDate(a.endDate).getTime() - parseLocalDate(a.startDate).getTime();
+      const spanB = parseLocalDate(b.endDate).getTime() - parseLocalDate(b.startDate).getTime();
+      if (spanB !== spanA) return spanB - spanA;
+      return a.startDate.localeCompare(b.startDate);
+    });
+  }
+
+  function getCalendarEventsForDate(date) {
+    const sourceItems = state.activeCategory === 'all'
+      ? state.items.filter(item => !item.hidden)
+      : state.items.filter(item => !item.hidden && item.category === state.activeCategory);
+    return sortCalendarEvents(sourceItems.flatMap(item => getOccurrencesInRange(item, date, date)));
+  }
 
   /**
    * Renders the entire month calendar grid with multi-day connected event bars.
@@ -1864,12 +1988,7 @@
       });
 
       // Sort matching events: multi-day first, then by startDate, then createdAt
-      matchingEvents.sort((a, b) => {
-        const spanA = parseLocalDate(a.endDate).getTime() - parseLocalDate(a.startDate).getTime();
-        const spanB = parseLocalDate(b.endDate).getTime() - parseLocalDate(b.startDate).getTime();
-        if (spanB !== spanA) return spanB - spanA;
-        return a.startDate.localeCompare(b.startDate);
-      });
+      sortCalendarEvents(matchingEvents);
 
       const maxDisplay = 3;
       const visibleEvents = matchingEvents.slice(0, maxDisplay);
@@ -1922,7 +2041,7 @@
       }).join('');
 
       const overflowHtml = overflowCount > 0 
-        ? `<div class="cal-more-badge">+${overflowCount}개 더보기</div>` 
+        ? `<button type="button" class="cal-more-badge" data-more-date="${cellDateStr}" aria-label="${cellDateStr} 전체 일정 ${matchingEvents.length}개 보기">+${overflowCount}개 더보기</button>` 
         : '';
 
       const cellClasses = [
@@ -1952,6 +2071,28 @@
     renderMobileCalendarAgenda();
   }
 
+  function openCalendarMoreModal(date) {
+    const items = getCalendarEventsForDate(date);
+    calendarMoreTitle.textContent = `${formatDateWithDay(date).replace(/ \(.\)$/, '')} · 총 ${items.length}개`;
+    calendarMoreList.innerHTML = items.map(item => {
+      const categoryInfo = getCategoryById(item.category);
+      const isCompleted = isTaskOccurrenceCompleted(item, item.startDate);
+      return `<button type="button" class="calendar-more-item" data-id="${item.id}" data-occurrence-start="${item.startDate}" data-occurrence-end="${item.endDate}">
+        <span class="card-category-badge ${categoryInfo.badgeClass}" style="color:${categoryInfo.color};background:${categoryInfo.color}18">${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}</span>
+        <span class="calendar-more-item-title">${item.important ? '⭐ ' : ''}${escapeHtml(item.title)}</span>
+        ${isCompleted ? '<span class="task-completed-badge">✓ 완료</span>' : ''}
+      </button>`;
+    }).join('');
+    calendarMoreModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => closeCalendarMoreBtn.focus(), 50);
+  }
+
+  function closeCalendarMoreModal() {
+    calendarMoreModal.hidden = true;
+    document.body.style.overflow = '';
+  }
+
   function renderMobileCalendarAgenda() {
     if (!mobileCalendarAgenda) return;
     const date = state.selectedCalendarDate || toIsoDateString(getTodayMidnight());
@@ -1964,12 +2105,38 @@
 
   // ==========================================
   // Memo
+  function loadMemoCategories() {
+    try {
+      const raw = localStorage.getItem(MEMO_CATEGORY_STORAGE_KEY);
+      if (raw === null) return DEFAULT_MEMO_CATEGORIES.map(category => ({ ...category }));
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved)) return DEFAULT_MEMO_CATEGORIES.map(category => ({ ...category }));
+      return saved.filter(category => category && typeof category.id === 'string' && typeof category.name === 'string' && category.name.trim())
+        .map(category => ({ id:category.id, name:category.name.trim() }));
+    } catch (error) {
+      console.error('Failed to load memo category data:', error);
+      return DEFAULT_MEMO_CATEGORIES.map(category => ({ ...category }));
+    }
+  }
+
+  function saveMemoCategories() {
+    try {
+      localStorage.setItem(MEMO_CATEGORY_STORAGE_KEY, JSON.stringify(state.memoCategories));
+      return true;
+    } catch (error) {
+      console.error('Failed to save memo category data:', error);
+      showToast('메모 분류 저장 중 오류가 발생했습니다.');
+      return false;
+    }
+  }
+
   function loadMemos() {
     try {
       const saved = JSON.parse(localStorage.getItem(MEMO_STORAGE_KEY) || '[]');
       return Array.isArray(saved) ? saved.filter(memo => memo && typeof memo.id === 'string').map(memo => ({
         ...memo,
-        linkedEventId: typeof memo.linkedEventId === 'string' && memo.linkedEventId ? memo.linkedEventId : null
+        linkedEventId: typeof memo.linkedEventId === 'string' && memo.linkedEventId ? memo.linkedEventId : null,
+        isMinimized: memo.isMinimized === true
       })) : [];
     } catch (error) {
       console.error('Failed to load memo data:', error);
@@ -2005,11 +2172,78 @@
     return memo.linkedEventId ? state.items.find(item => item.id === memo.linkedEventId && !item.hidden) || null : null;
   }
 
+  function getMemoCategory(memo) {
+    if (!memo || typeof memo.memoCategoryId !== 'string') return null;
+    return state.memoCategories.find(category => category.id === memo.memoCategoryId) || null;
+  }
+
+  function getMemoCategoryName(memo) {
+    return getMemoCategory(memo)?.name || '미분류';
+  }
+
+  function renderMemoCategoryBadge(memo) {
+    return `<span class="memo-category-badge">${escapeHtml(getMemoCategoryName(memo))}</span>`;
+  }
+
   function formatMemoLinkedEvent(item) {
     const occurrence = getEffectiveOccurrence(item);
     const dateText = formatDateRange(occurrence.startDate, occurrence.endDate);
     const repeatLabel = getRepeatLabel(item);
     return `${item.title} · ${repeatLabel ? `${repeatLabel} · ` : ''}${dateText}`;
+  }
+
+  function renderMemoFlags(memo) {
+    return `<div class="memo-card-flags">
+      <button type="button" class="memo-flag-btn memo-flag-important${memo.important ? ' active' : ''}" data-memo-action="important" aria-label="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}" aria-pressed="${Boolean(memo.important)}" title="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}">${memo.important ? '★' : '☆'}</button>
+      <button type="button" class="memo-flag-btn memo-flag-pin${memo.pinned ? ' active' : ''}" data-memo-action="pin" aria-label="${memo.pinned ? '메모 고정 해제' : '메모 고정'}" aria-pressed="${Boolean(memo.pinned)}" title="${memo.pinned ? '메모 고정 해제' : '메모 고정'}">📌</button>
+    </div>`;
+  }
+
+  function renderMemoLinkedEvent(memo) {
+    const linkedItem = getMemoLinkedItem(memo);
+    return linkedItem ? `<button type="button" class="memo-linked-event" data-memo-action="open-event" data-event-id="${escapeHtml(linkedItem.id)}" aria-label="${escapeHtml(linkedItem.title)} 일정 열기">📅 <span>${escapeHtml(formatMemoLinkedEvent(linkedItem))}</span></button>` : '';
+  }
+
+  function linkifyMemoContent(content) {
+    const escaped = escapeHtml(content || '');
+    return escaped.replace(/https?:\/\/[^\s&lt;&gt;]+/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+  }
+
+  function renderMemoListRows(memos) {
+    return memos.map(memo => {
+      const title = (memo.title || '').trim() || '제목 없음';
+      return `<article class="memo-list-row" data-memo-id="${escapeHtml(memo.id)}" tabindex="0" aria-label="${escapeHtml(title)} 메모 열기">
+        <div class="memo-list-flags">${renderMemoFlags(memo)}</div>
+        <h3 class="memo-list-title">${escapeHtml(title)}</h3>
+        <span class="memo-list-category">${renderMemoCategoryBadge(memo)}</span>
+        <div class="memo-list-event">${renderMemoLinkedEvent(memo) || '<span>—</span>'}</div>
+        <time class="memo-updated-at" datetime="${escapeHtml(memo.updatedAt)}">${formatMemoDate(memo.updatedAt)}</time>
+      </article>`;
+    }).join('');
+  }
+
+  function renderStickyMemos(memos) {
+    return memos.map(memo => {
+      const title = (memo.title || '').trim() || '제목 없음';
+      const content = memo.content || '내용 없음';
+      const isMinimized = memo.isMinimized === true;
+      const toggleButton = `<button type="button" class="memo-minimize-btn" data-memo-action="minimize" aria-label="${isMinimized ? '메모 펼치기' : '메모 최소화'}" aria-expanded="${!isMinimized}" title="${isMinimized ? '메모 펼치기' : '메모 최소화'}">${isMinimized ? '+' : '−'}</button>`;
+      if (isMinimized) {
+        return `<article class="memo-sticky memo-sticky-minimized" data-memo-id="${escapeHtml(memo.id)}" tabindex="0" aria-label="${escapeHtml(title)} 메모 열기">
+          <div class="memo-sticky-compact-top">${renderMemoCategoryBadge(memo)}<div class="memo-sticky-compact-controls">${memo.pinned ? '<span class="memo-sticky-pin" aria-label="고정된 메모" title="고정된 메모">📌</span>' : ''}${toggleButton}</div></div>
+          <h3 class="memo-card-title memo-sticky-compact-title">${escapeHtml(title)}</h3>
+        </article>`;
+      }
+      return `<article class="memo-sticky" data-memo-id="${escapeHtml(memo.id)}" tabindex="0" aria-label="${escapeHtml(title)} 메모 열기">
+        <div class="memo-sticky-header">${renderMemoCategoryBadge(memo)}${toggleButton}</div>
+        <div class="memo-card-top"><h3 class="memo-card-title">${escapeHtml(title)}</h3>${renderMemoFlags(memo)}</div>
+        <div class="memo-sticky-content${memo.content ? '' : ' memo-card-preview-empty'}">${linkifyMemoContent(content)}</div>
+        <div class="memo-sticky-bottom">
+          ${renderMemoLinkedEvent(memo)}
+          <div class="memo-card-footer"><time class="memo-updated-at" datetime="${escapeHtml(memo.updatedAt)}">수정 ${formatMemoDate(memo.updatedAt)}</time><button type="button" class="memo-action-btn memo-action-delete" data-memo-action="delete" aria-label="${escapeHtml(title)} 삭제">삭제</button></div>
+        </div>
+      </article>`;
+    }).join('');
   }
 
   function renderMemoLinkedEventOptions(selectedId = null) {
@@ -2021,18 +2255,39 @@
     ).join('');
   }
 
+  function renderMemoCategoryOptions(selectedId = null) {
+    memoCategorySelect.innerHTML = '<option value="">미분류</option>' + state.memoCategories.map(category =>
+      `<option value="${escapeHtml(category.id)}"${category.id === selectedId ? ' selected' : ''}>${escapeHtml(category.name)}</option>`
+    ).join('');
+  }
+
+  function renderMemoCategoryBar() {
+    const filters = [{ id:'all', name:'전체' }, ...state.memoCategories, { id:'uncategorized', name:'미분류' }];
+    memoCategoryBar.innerHTML = filters.map(category => `<button type="button" class="memo-category-filter${state.activeMemoCategory === category.id ? ' active' : ''}" data-memo-category-filter="${escapeHtml(category.id)}" aria-pressed="${state.activeMemoCategory === category.id}">${escapeHtml(category.name)}</button>`).join('') + '<button type="button" class="memo-category-filter memo-category-manage-btn" data-memo-category-manage aria-label="메모 분류 관리">＋ 분류 관리</button>';
+  }
+
   function renderMemos() {
+    renderMemoCategoryBar();
+    memoList.dataset.memoViewMode = state.memoViewMode;
     if (!state.memos.length) {
       memoList.innerHTML = '<section class="memo-empty-state"><h3>아직 작성된 메모가 없습니다.</h3><p>필요한 내용을 간단하게 기록해 보세요.</p><button type="button" class="btn btn-primary" data-memo-action="new">＋ 새 메모</button></section>';
       return;
     }
     const query = state.memoSearchQuery.trim().toLocaleLowerCase();
     const memos = state.memos
-      .filter(memo => state.activeCategory === 'all' || getMemoLinkedItem(memo)?.category === state.activeCategory)
+      .filter(memo => state.activeMemoCategory === 'all' || (state.activeMemoCategory === 'uncategorized' ? !getMemoCategory(memo) : memo.memoCategoryId === state.activeMemoCategory))
       .filter(memo => !query || `${memo.title || ''}\n${memo.content || ''}`.toLocaleLowerCase().includes(query))
       .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     if (!memos.length) {
-      memoList.innerHTML = `<section class="memo-empty-state memo-search-empty"><h3>${query ? '검색 결과가 없습니다.' : '이 카테고리에 연결된 메모가 없습니다.'}</h3><p>${query ? '다른 검색어를 입력해 보세요.' : '다른 카테고리를 선택해 보세요.'}</p></section>`;
+      memoList.innerHTML = `<section class="memo-empty-state memo-search-empty"><h3>${query ? '검색 결과가 없습니다.' : '이 분류의 메모가 없습니다.'}</h3><p>${query ? '검색어 또는 분류를 바꿔 보세요.' : '다른 분류를 선택해 보세요.'}</p></section>`;
+      return;
+    }
+    if (state.memoViewMode === 'list') {
+      memoList.innerHTML = renderMemoListRows(memos);
+      return;
+    }
+    if (state.memoViewMode === 'sticky') {
+      memoList.innerHTML = renderStickyMemos(memos);
       return;
     }
     memoList.innerHTML = memos.map(memo => {
@@ -2040,6 +2295,7 @@
       const preview = memo.content || '내용 없음';
       const linkedItem = getMemoLinkedItem(memo);
       return `<article class="memo-card" data-memo-id="${escapeHtml(memo.id)}">
+        ${renderMemoCategoryBadge(memo)}
         <div class="memo-card-top"><h3 class="memo-card-title">${escapeHtml(title)}</h3><div class="memo-card-flags">
           <button type="button" class="memo-flag-btn memo-flag-important${memo.important ? ' active' : ''}" data-memo-action="important" aria-label="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}" aria-pressed="${Boolean(memo.important)}" title="${memo.important ? '중요 메모 해제' : '중요 메모로 설정'}">${memo.important ? '★' : '☆'}</button>
           <button type="button" class="memo-flag-btn memo-flag-pin${memo.pinned ? ' active' : ''}" data-memo-action="pin" aria-label="${memo.pinned ? '메모 고정 해제' : '메모 고정'}" aria-pressed="${Boolean(memo.pinned)}" title="${memo.pinned ? '메모 고정 해제' : '메모 고정'}">📌</button>
@@ -2079,7 +2335,7 @@
   }
 
   function getMemoFormSnapshot() {
-    return JSON.stringify({ title: memoTitleInput.value, content: memoContentInput.value, linkedEventId: memoLinkedEventSelect.value });
+    return JSON.stringify({ title: memoTitleInput.value, content: memoContentInput.value, memoCategoryId:memoCategorySelect.value, linkedEventId: memoLinkedEventSelect.value });
   }
 
   function getCategoryFormSnapshot() {
@@ -2117,6 +2373,7 @@
     memoModalTitle.textContent = memo ? '메모 수정' : '새 메모';
     memoTitleInput.value = memo ? memo.title : '';
     memoContentInput.value = memo ? memo.content : '';
+    renderMemoCategoryOptions(memo ? memo.memoCategoryId : null);
     renderMemoLinkedEventOptions(memo ? memo.linkedEventId : null);
     memoFormError.textContent = '';
     memoFormBaseline = getMemoFormSnapshot();
@@ -2141,6 +2398,7 @@
     event.preventDefault();
     const title = memoTitleInput.value.trim();
     const content = memoContentInput.value;
+    const memoCategoryId = state.memoCategories.some(category => category.id === memoCategorySelect.value) ? memoCategorySelect.value : null;
     const linkedEventId = memoLinkedEventSelect.value || null;
     if (!title && !content.trim()) {
       memoFormError.textContent = '제목 또는 내용을 입력해 주세요.';
@@ -2151,10 +2409,11 @@
     if (existing) {
       existing.title = title;
       existing.content = content;
+      existing.memoCategoryId = memoCategoryId;
       existing.linkedEventId = linkedEventId;
       existing.updatedAt = timestamp;
     } else {
-      state.memos.push({ id: generateMemoId(), title, content, createdAt: timestamp, updatedAt: timestamp, important: false, pinned: false, linkedEventId });
+      state.memos.push({ id: generateMemoId(), title, content, createdAt: timestamp, updatedAt: timestamp, important: false, pinned: false, isMinimized: false, memoCategoryId, linkedEventId });
     }
     if (!saveMemos()) return;
     renderApp();
@@ -2195,17 +2454,129 @@
     renderMemos();
   }
 
+  function toggleMemoMinimized(id) {
+    const memo = state.memos.find(entry => entry.id === id);
+    if (!memo) return;
+    const previous = memo.isMinimized;
+    memo.isMinimized = !Boolean(memo.isMinimized);
+    if (!saveMemos()) {
+      if (previous === undefined) delete memo.isMinimized; else memo.isMinimized = previous;
+      return;
+    }
+    renderMemos();
+  }
+
+  function renderMemoCategoryManagement() {
+    memoCategoryManagementList.innerHTML = state.memoCategories.length ? state.memoCategories.map(category => {
+      const count = state.memos.filter(memo => memo.memoCategoryId === category.id).length;
+      return `<div class="memo-category-management-row" data-memo-category-id="${escapeHtml(category.id)}"><span>${escapeHtml(category.name)} (${count})</span><button type="button" class="memo-category-row-btn" data-memo-category-action="edit">수정</button><button type="button" class="memo-category-row-btn memo-category-row-delete" data-memo-category-action="delete">삭제</button></div>`;
+    }).join('') : '<p class="memo-empty-state">등록된 메모 분류가 없습니다.</p>';
+  }
+
+  function openMemoCategoryManagement() {
+    memoCategoryError.textContent = '';
+    memoCategoryNameInput.value = '';
+    renderMemoCategoryManagement();
+    memoCategoryModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => memoCategoryNameInput.focus(), 50);
+  }
+
+  function closeMemoCategoryManagement() {
+    memoCategoryModal.hidden = true;
+    memoCategoryError.textContent = '';
+    document.body.style.overflow = '';
+  }
+
+  function isDuplicateMemoCategoryName(name, excludeId = null) {
+    return state.memoCategories.some(category => category.id !== excludeId && category.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  }
+
+  function addMemoCategory(event) {
+    event.preventDefault();
+    const name = memoCategoryNameInput.value.trim();
+    if (!name) { memoCategoryError.textContent = '분류 이름을 입력해 주세요.'; return; }
+    if (isDuplicateMemoCategoryName(name)) { memoCategoryError.textContent = '같은 이름의 분류가 이미 있습니다.'; return; }
+    state.memoCategories.push({ id:`memo-category-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name });
+    if (!saveMemoCategories()) { state.memoCategories.pop(); return; }
+    memoCategoryNameInput.value = '';
+    memoCategoryError.textContent = '';
+    renderMemoCategoryManagement();
+    renderMemos();
+  }
+
+  function editMemoCategory(id) {
+    const category = state.memoCategories.find(entry => entry.id === id);
+    if (!category) return;
+    const nextName = window.prompt('수정할 메모 분류 이름을 입력하세요.', category.name);
+    if (nextName === null) return;
+    const name = nextName.trim();
+    if (!name || name.length > 20) { showToast('분류 이름은 1~20자로 입력해 주세요.'); return; }
+    if (isDuplicateMemoCategoryName(name, id)) { showToast('같은 이름의 분류가 이미 있습니다.'); return; }
+    const previousName = category.name;
+    category.name = name;
+    if (!saveMemoCategories()) { category.name = previousName; return; }
+    renderMemoCategoryManagement();
+    renderMemos();
+  }
+
+  function deleteMemoCategory(id) {
+    const category = state.memoCategories.find(entry => entry.id === id);
+    if (!category) return;
+    const used = state.memos.some(memo => memo.memoCategoryId === id);
+    const message = used ? `'${category.name}' 분류를 삭제하면 해당 메모는 미분류로 변경됩니다. 삭제하시겠습니까?` : `'${category.name}' 분류를 삭제하시겠습니까?`;
+    if (!window.confirm(message)) return;
+    const previousCategories = state.memoCategories;
+    const previousMemos = state.memos.map(memo => ({ ...memo }));
+    state.memoCategories = state.memoCategories.filter(entry => entry.id !== id);
+    state.memos.forEach(memo => { if (memo.memoCategoryId === id) memo.memoCategoryId = null; });
+    if (!saveMemoCategories() || !saveMemos()) { state.memoCategories = previousCategories; state.memos = previousMemos; return; }
+    if (state.activeMemoCategory === id) state.activeMemoCategory = 'all';
+    renderMemoCategoryManagement();
+    renderMemos();
+  }
+
   // Main Render Orchestration
   // ==========================================
 
+  function renderMiniCalendar() {
+    if (!miniCalendarTitle || !miniCalendarDays) return;
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+
+    miniCalendarTitle.textContent = `${year}년 ${month + 1}월`;
+
+    for (let index = 0; index < 42; index++) {
+      const date = index - firstWeekday + 1;
+      if (date < 1 || date > lastDate) {
+        cells.push('<span class="mini-calendar-day is-empty" role="gridcell" aria-hidden="true"></span>');
+        continue;
+      }
+
+      const weekday = index % 7;
+      const isToday = date === today.getDate();
+      const dayClass = weekday === 0 ? ' sunday' : weekday === 6 ? ' saturday' : '';
+      cells.push(`<span class="mini-calendar-day${dayClass}${isToday ? ' is-today' : ''}" role="gridcell"${isToday ? ' aria-current="date"' : ''} aria-label="${year}년 ${month + 1}월 ${date}일${isToday ? ', 오늘' : ''}">${date}</span>`);
+    }
+
+    miniCalendarDays.innerHTML = cells.join('');
+  }
+
   function renderApp() {
+    renderMiniCalendar();
     renderHeaderDate();
     updateCategoryCounts();
     renderCategoryActiveStates();
 
     if (state.currentView === 'dashboard') {
       const filteredItems = getFilteredAndSortedItems();
-      renderTodaySchedule(filteredItems);
+      const todayScheduleItems = state.items.filter(item => !item.hidden);
+      renderTodaySchedule(todayScheduleItems);
       renderListSection(filteredItems);
     } else if (state.currentView === 'calendar') {
       renderCalendar();
@@ -2224,6 +2595,12 @@
       elements[1].hidden = !active;
     });
     renderApp();
+  }
+
+  function handleSidebarCategoryClick(categoryId) {
+    state.activeCategory = categoryId;
+    switchView('dashboard');
+    if (window.innerWidth < 1024) closeDrawer();
   }
 
   /**
@@ -2318,6 +2695,9 @@
         ${categoryInfo.icon} ${escapeHtml(categoryInfo.label)}
       </span>
       ${scheduleStatus === 'ongoing' ? '<span class="badge-ongoing-tag">진행 중</span>' : ''}
+      ${isTaskOccurrenceCompleted(item, occurrence.startDate)
+        ? `<button type="button" class="task-completion-toggle completed" data-detail-task-completion data-occurrence-start="${occurrence.startDate}" data-occurrence-end="${occurrence.endDate}" aria-pressed="true" aria-label="이 일정 완료 취소">✓ 완료</button>`
+        : `<button type="button" class="task-completion-toggle" data-detail-task-completion data-occurrence-start="${occurrence.startDate}" data-occurrence-end="${occurrence.endDate}" aria-pressed="false" aria-label="이 일정 완료 처리">○ 미완료</button>`}
     `;
 
     checklistAddForm.hidden = true;
@@ -2488,6 +2868,7 @@
     state.currentEditId = null;
     modalTitle.textContent = '새 일정 추가';
     saveFormBtn.textContent = '저장';
+    deleteFormItemBtn.hidden = true;
     editItemId.value = '';
     titleInput.value = '';
     
@@ -2522,6 +2903,7 @@
     state.currentEditId = id;
     modalTitle.textContent = '일정 수정';
     saveFormBtn.textContent = '수정 완료';
+    deleteFormItemBtn.hidden = false;
     editItemId.value = item.id;
     titleInput.value = item.title;
     startDateInput.value = item.startDate;
@@ -2686,6 +3068,8 @@
         lunar: lunarVal,
         repeat: repeatVal,
         hidden: hiddenVal,
+        isTaskCompleted: false,
+        completedOccurrences: [],
         checklist: [],
         createdAt: new Date().toISOString()
       };
@@ -2910,17 +3294,58 @@
     memoContentInput.addEventListener('input', () => { memoFormError.textContent = ''; });
     memoSearchInput.addEventListener('input', event => { state.memoSearchQuery = event.target.value; clearMemoSearchBtn.hidden = !event.target.value; renderMemos(); });
     clearMemoSearchBtn.addEventListener('click', () => { memoSearchInput.value = ''; state.memoSearchQuery = ''; clearMemoSearchBtn.hidden = true; renderMemos(); memoSearchInput.focus(); });
+    memoCategoryBar.addEventListener('click', event => {
+      const manageButton = event.target.closest('[data-memo-category-manage]');
+      if (manageButton) { openMemoCategoryManagement(); return; }
+      const filterButton = event.target.closest('[data-memo-category-filter]');
+      if (!filterButton) return;
+      state.activeMemoCategory = filterButton.dataset.memoCategoryFilter;
+      renderMemos();
+    });
+    closeMemoCategoryModalBtn.addEventListener('click', closeMemoCategoryManagement);
+    doneMemoCategoryBtn.addEventListener('click', closeMemoCategoryManagement);
+    memoCategoryModal.addEventListener('click', event => { if (event.target === memoCategoryModal) closeMemoCategoryManagement(); });
+    memoCategoryForm.addEventListener('submit', addMemoCategory);
+    memoCategoryNameInput.addEventListener('input', () => { memoCategoryError.textContent = ''; });
+    memoCategoryManagementList.addEventListener('click', event => {
+      const button = event.target.closest('[data-memo-category-action]');
+      const row = button?.closest('[data-memo-category-id]');
+      if (!button || !row) return;
+      if (button.dataset.memoCategoryAction === 'edit') editMemoCategory(row.dataset.memoCategoryId);
+      if (button.dataset.memoCategoryAction === 'delete') deleteMemoCategory(row.dataset.memoCategoryId);
+    });
+    memoViewModeButtons.forEach(button => button.addEventListener('click', () => {
+      const nextMode = button.dataset.memoViewMode;
+      if (!['card', 'list', 'sticky'].includes(nextMode) || nextMode === state.memoViewMode) return;
+      state.memoViewMode = nextMode;
+      saveSettings({ ...state.settings, memoViewMode: nextMode });
+      renderMemos();
+    }));
     memoList.addEventListener('click', event => {
       const action = event.target.closest('[data-memo-action]');
-      if (!action) return;
+      if (!action) {
+        if (event.target.closest('a')) return;
+        const memo = event.target.closest('[data-memo-id]');
+        if (memo && state.memoViewMode !== 'card') openMemoModal(memo.dataset.memoId);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
       if (action.dataset.memoAction === 'new') { openMemoModal(); return; }
       if (action.dataset.memoAction === 'open-event') { openDetailModal(action.dataset.eventId); return; }
       const card = action.closest('[data-memo-id]');
       if (!card) return;
+      if (action.dataset.memoAction === 'minimize') { toggleMemoMinimized(card.dataset.memoId); return; }
       if (action.dataset.memoAction === 'edit') openMemoModal(card.dataset.memoId);
       if (action.dataset.memoAction === 'delete') openMemoDeleteModal(card.dataset.memoId);
       if (action.dataset.memoAction === 'important') toggleMemoFlag(card.dataset.memoId, 'important');
       if (action.dataset.memoAction === 'pin') toggleMemoFlag(card.dataset.memoId, 'pinned');
+    });
+    memoList.addEventListener('keydown', event => {
+      if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-memo-id]') && state.memoViewMode !== 'card') {
+        event.preventDefault();
+        openMemoModal(event.target.dataset.memoId);
+      }
     });
     closeMemoDeleteBtn.addEventListener('click', closeMemoDeleteModal);
     cancelMemoDeleteBtn.addEventListener('click', closeMemoDeleteModal);
@@ -2972,6 +3397,13 @@
 
     // Calendar Grid Event Click & Delegation
     calendarGrid.addEventListener('click', (e) => {
+      const moreBadge = e.target.closest('.cal-more-badge[data-more-date]');
+      if (moreBadge) {
+        e.preventDefault();
+        e.stopPropagation();
+        openCalendarMoreModal(moreBadge.dataset.moreDate);
+        return;
+      }
       const eventBar = e.target.closest('.cal-event-bar');
       if (eventBar && eventBar.dataset.id) {
         e.stopPropagation();
@@ -2983,6 +3415,16 @@
         state.selectedCalendarDate = cell.dataset.date;
         if (window.innerWidth < 768) renderCalendar();
         else openAddModal(cell.dataset.date);
+      }
+    });
+    closeCalendarMoreBtn.addEventListener('click', (e) => { e.stopPropagation(); closeCalendarMoreModal(); });
+    calendarMoreModal.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.target === calendarMoreModal) { closeCalendarMoreModal(); return; }
+      const item = e.target.closest('.calendar-more-item[data-id]');
+      if (item) {
+        closeCalendarMoreModal();
+        openDetailModal(item.dataset.id, item.dataset.occurrenceStart, item.dataset.occurrenceEnd);
       }
     });
     if (mobileCalendarAgenda) mobileCalendarAgenda.addEventListener('click', e => {
@@ -3006,6 +3448,16 @@
     closeDetailModalBtn.addEventListener('click', closeDetailModal);
     detailModal.addEventListener('click', (e) => {
       if (e.target === detailModal) closeDetailModal();
+      const completionToggle = e.target.closest('[data-detail-task-completion]');
+      if (completionToggle && state.currentDetailId) {
+        const detailId = state.currentDetailId;
+        const occurrenceStart = completionToggle.dataset.occurrenceStart;
+        const occurrenceEnd = completionToggle.dataset.occurrenceEnd;
+        toggleTaskCompletion(detailId, occurrenceStart);
+        openDetailModal(detailId, occurrenceStart, occurrenceEnd);
+        setTimeout(() => detailHeaderTags.querySelector('[data-detail-task-completion]')?.focus(), 0);
+        return;
+      }
       const memoLink = e.target.closest('[data-linked-memo-id]');
       if (memoLink) focusMemoFromDetail(memoLink.dataset.linkedMemoId);
     });
@@ -3156,7 +3608,7 @@
       if (editBtn) { e.preventDefault(); e.stopPropagation(); openCategoryModal(editBtn.dataset.editCategory); return; }
       const btn = e.target.closest('.nav-link[data-category]');
       if (!btn) return;
-      const categoryId = btn.dataset.category; state.activeCategory = categoryId; renderApp(); if (window.innerWidth < 1024) closeDrawer();
+      handleSidebarCategoryClick(btn.dataset.category);
     });
 
     // Mobile Category Chips
@@ -3197,9 +3649,23 @@
       renderApp();
     });
 
+    viewModeButtons.forEach(button => button.addEventListener('click', () => {
+      const nextMode = button.dataset.viewMode === 'card' ? 'card' : 'list';
+      if (nextMode === state.viewMode) return;
+      state.viewMode = nextMode;
+      saveSettings({ ...state.settings, viewMode: nextMode });
+      renderApp();
+    }));
+
     // Form Modal Controls
     closeFormModalBtn.addEventListener('click', () => closeFormModal());
     cancelFormBtn.addEventListener('click', () => closeFormModal());
+    deleteFormItemBtn.addEventListener('click', () => {
+      const id = state.currentEditId;
+      if (!id) return;
+      closeFormModal(true);
+      openDeleteModal(id);
+    });
     ddayForm.addEventListener('submit', handleFormSubmit);
     ddayForm.querySelectorAll('input[name="calendarType"]').forEach(input => input.addEventListener('change', () => {
       setCalendarType(input.value);
@@ -3307,6 +3773,8 @@
           closeAutoBackupManager();
         } else if (!memoDeleteModal.hidden) {
           closeMemoDeleteModal();
+        } else if (!memoCategoryModal.hidden) {
+          closeMemoCategoryManagement();
         } else if (!memoModal.hidden) {
           closeMemoModal();
         } else if (!restoreConfirmModal.hidden) {
@@ -3325,6 +3793,8 @@
           closePinModal();
         } else if (!calendarJumpModal.hidden) {
           calendarJumpModal.hidden = true; document.body.style.overflow = '';
+        } else if (!calendarMoreModal.hidden) {
+          closeCalendarMoreModal();
         } else if (!formModal.hidden) {
           closeFormModal();
         } else if (!settingsModal.hidden) {
@@ -3347,6 +3817,11 @@
 
     // Event delegation for card action buttons in Dashboard
     cardsContainer.addEventListener('click', (e) => {
+      const completeBtn = e.target.closest('.btn-action-complete');
+      if (completeBtn) {
+        toggleTaskCompletion(completeBtn.dataset.id, completeBtn.dataset.occurrenceStart);
+        return;
+      }
       const editBtn = e.target.closest('.btn-action-edit');
       if (editBtn) {
         const id = editBtn.dataset.id;
@@ -3361,17 +3836,26 @@
         return;
       }
 
+      const listRow = e.target.closest('.schedule-list-row[data-id]');
+      if (listRow) {
+        openDetailModal(listRow.dataset.id);
+        return;
+      }
+
       const card = e.target.closest('.dday-card[data-id]');
       if (card) openDetailModal(card.dataset.id);
     });
 
     cardsContainer.addEventListener('keydown', (e) => {
-      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.dday-card[data-id]')) {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.schedule-list-row[data-id]')) {
+        e.preventDefault();
+        openDetailModal(e.target.dataset.id);
+      } else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.dday-card[data-id]')) {
         e.preventDefault();
         openDetailModal(e.target.dataset.id);
       }
     });
-    heroSection.addEventListener('click', event => { const row=event.target.closest('.today-schedule-row[data-id]'); if(row) openDetailModal(row.dataset.id, row.dataset.occurrenceStart, row.dataset.occurrenceEnd); });
+    heroSection.addEventListener('click', event => { const completion=event.target.closest('[data-task-completion]'); if(completion){toggleTaskCompletion(completion.dataset.id, completion.dataset.occurrenceStart);return;} const row=event.target.closest('.today-schedule-row[data-id]'); if(row) openDetailModal(row.dataset.id, row.dataset.occurrenceStart, row.dataset.occurrenceEnd); });
     heroSection.addEventListener('keydown', event => { if ((event.key==='Enter'||event.key===' ') && event.target.matches('.today-schedule-row[data-id]')) { event.preventDefault(); openDetailModal(event.target.dataset.id, event.target.dataset.occurrenceStart, event.target.dataset.occurrenceEnd); } });
 
     // Input error clears
@@ -3398,6 +3882,7 @@
     syncCategoryMap();
     state.items = loadDDays();
     state.memos = loadMemos();
+    state.memoCategories = loadMemoCategories();
     saveDDays(state.items);
     initEventListeners();
     renderApp();
